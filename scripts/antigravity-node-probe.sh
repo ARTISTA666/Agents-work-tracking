@@ -8,7 +8,9 @@
 #   - 不弹窗、不改 FlClash 的任何设置，也不影响 FlClash 当前选择；
 #   - 为每个节点启动一个独立的临时 mihomo 实例（仅监听 127.0.0.1），
 #     再用官方 agy CLI 通过它做一次真实模型调用；
-#   - 结论按「真实模型调用」判定，而不是无认证 curl / 第三方 IP 库。
+#   - 结论按「真实模型调用」判定，而不是无认证 curl / 第三方 IP 库；
+#   - 自动给临时 mihomo 配置加 interface-name（默认出口网卡），让「连节点服务器」
+#     这一跳绕开 FlClash TUN，避免 fake-ip + 双重代理造成的超时/REALITY 误判。
 #
 # 依赖：mihomo、ruby（macOS 自带）、agy（Antigravity CLI）、sqlite3、curl
 # 用法：bash antigravity-node-probe.sh [节点名 ...]
@@ -24,16 +26,32 @@ if ! command -v "$AGY" >/dev/null 2>&1; then echo "❌ 找不到 agy：$AGY（�
 if [ -z "$MIHOMO" ] || [ ! -x "$MIHOMO" ]; then echo "❌ 找不到 mihomo（可设 MIHOMO=...）"; exit 2; fi
 if ! command -v ruby >/dev/null 2>&1; then echo "❌ 需要 ruby（macOS 自带）"; exit 2; fi
 
-# 取当前订阅 profile（FlClash 数据库里唯一一条 profile 的 id）
+# 取当前订阅 profile：优先 FlClash 偏好里的 currentProfileId（多订阅时更准），否则回退数据库第一条
 PROFILE=""
 if command -v sqlite3 >/dev/null 2>&1 && [ -f "$FLCLASH_DIR/database.sqlite" ]; then
-  ID=$(sqlite3 "$FLCLASH_DIR/database.sqlite" "select id from profiles limit 1" 2>/dev/null)
+  ID=""
+  if command -v python3 >/dev/null 2>&1 && command -v defaults >/dev/null 2>&1; then
+    ID=$(python3 -c '
+import subprocess, json
+try:
+    raw = subprocess.run(["defaults", "read", "com.follow.clash", "flutter.config"],
+                         capture_output=True, text=True).stdout
+    print(json.loads(raw).get("currentProfileId") or "")
+except Exception:
+    print("")
+' 2>/dev/null)
+  fi
+  [ -z "${ID:-}" ] && ID=$(sqlite3 "$FLCLASH_DIR/database.sqlite" "select id from profiles limit 1" 2>/dev/null)
   [ -n "${ID:-}" ] && [ -f "$FLCLASH_DIR/profiles/$ID.yaml" ] && PROFILE="$FLCLASH_DIR/profiles/$ID.yaml"
 fi
 if [ -z "$PROFILE" ]; then
   PROFILE=$(ls -t "$FLCLASH_DIR"/profiles/*.yaml 2>/dev/null | head -1)
 fi
 if [ -z "$PROFILE" ] || [ ! -f "$PROFILE" ]; then echo "❌ 找不到 FlClash 订阅文件（$FLCLASH_DIR/profiles/*.yaml）"; exit 2; fi
+
+# 默认出口网卡（用于让临时 mihomo 直连节点服务器、绕开 FlClash TUN）
+IFACE=$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')
+[ -z "${IFACE:-}" ] && IFACE="en0"
 
 NODES=("$@")
 if [ ${#NODES[@]} -eq 0 ]; then
@@ -49,12 +67,14 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "订阅文件：$PROFILE"
+echo "直连网卡：${IFACE}（临时实例走物理网卡，绕开 FlClash TUN）"
 echo "候选节点：${NODES[*]}"
 echo
 
 # 用 ruby 从订阅里抽出指定节点，逐个写成独立的 mihomo 配置（每个节点一个本地端口）
 ruby -ryaml -e '
   profile = ARGV.shift
+  iface   = ARGV.shift
   outdir  = ARGV.shift
   data = YAML.load_file(profile)
   by_name = {}
@@ -69,6 +89,7 @@ ruby -ryaml -e '
     Dir.mkdir(dir) unless Dir.exist?(dir)
     cfg = {
       "mixed-port" => 24100 + i,
+      "interface-name" => (iface.to_s.empty? ? nil : iface),
       "allow-lan" => false,
       "mode" => "rule",
       "log-level" => "error",
@@ -78,10 +99,11 @@ ruby -ryaml -e '
       "proxy-groups" => [{ "name" => "PROBE", "type" => "select", "proxies" => [name] }],
       "rules" => ["MATCH,PROBE"]
     }
+    cfg.delete("interface-name") if cfg["interface-name"].nil?
     File.write(File.join(dir, "config.yaml"), YAML.dump(cfg))
     puts "OK\t#{i}\t#{name}"
   end
-' "$PROFILE" "$TMP" "${NODES[@]}"
+' "$PROFILE" "$IFACE" "$TMP" "${NODES[@]}"
 
 pass=0; fail=0
 for i in "${!NODES[@]}"; do
