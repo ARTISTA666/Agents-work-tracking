@@ -10,14 +10,23 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini 等）在日常使用�
 ├── records/                  # 排查记录（按日期命名，Markdown 格式）
 │   ├── 2026-09-02-*.md
 │   ├── 2026-09-03-*.md
-│   └── 2026-09-04-*.md
+│   ├── 2026-09-04-*.md
+│   └── 2026-10-17-*.md
 └── scripts/                  # 排查过程中编写的辅助脚本
-    └── apibai-retry-proxy.py
+    ├── apibai-retry-proxy.py
+    ├── antigravity-silent-check.sh   # Antigravity 出口静默自检（真实调用）
+    └── antigravity-node-probe.sh     # Antigravity 逐节点静默体检（隔离 mihomo + agy）
 ```
 
 ## 记录列表
 
 按时间倒序排列。
+
+### 2026-10-17
+
+| 文件 | 问题摘要 | 根因 | 状态 |
+| --- | --- | --- | --- |
+| [antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md) | Antigravity 调用 Gemini 报 `HTTP 400 / FAILED_PRECONDITION / User location is not supported for the API use`，Agent 任务首次调用即终止；前一轮排查按旧判据换节点仍失败 | FlClash「节点选择」= 新加坡SG-A，出口 IP `50.7.253.42` 被 `daily-cloudcode-pa.googleapis.com` 地区校验拒绝；且旧判据（`generativelanguage` + API Key、无认证 POST 看 400/401）均不能代表 Antigravity 通道。**本篇同时用实验证伪并修正了 2026-09-04 记录中的「无认证 401 = 地域通过」判据** | ✅ 已解决（切 日本JP-HY2，静默 CLI 实测 2/2 通过；另修复 FlClash 冷启动不自动开代理） |
 
 ### 2026-09-04
 
@@ -44,12 +53,13 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini 等）在日常使用�
 
 | 问题类型 | 相关记录 |
 | --- | --- |
-| **地域限制 / IP 白名单** | Antigravity 400 User location not supported、ChatGPT unsupported country |
-| **代理客户端故障** | FlClash 未运行、ClashX Meta 架构缺陷与迁移 |
+| **地域限制 / IP 白名单** | Antigravity 400 User location not supported（[2026-09-04 台湾 IP](records/2026-09-04-antigravity-400-user-location-not-supported-taiwan-ip-region-restriction.md)、[2026-10-17 新加坡 IP](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md)）、ChatGPT unsupported country |
+| **代理客户端故障** | FlClash 未运行、FlClash `autoRun=false` 冷启动不自动开代理、ClashX Meta 架构缺陷与迁移 |
 | **DNS 污染 / 泄漏** | FlClash 8.8.8.8 污染、ClashX Meta IPv6 DNS 泄漏 |
 | **API 报错 / 参数错** | ZCode 400 Invalid request body、ZCode 401 中断 |
-| **Antigravity 专项** | Antigravity 400 地域限制、FlClash 排查中涉及 Antigravity 连通性 |
+| **Antigravity 专项** | Antigravity 400 地域限制（两次）、FlClash 排查中涉及 Antigravity 连通性、静默自检/节点探针脚本 |
 | **macOS 网络配置** | FlClash DNS 修正与开机自启、ClashX Meta 彻底卸载 |
+| **验证判据修正** | [2026-10-17 记录](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md)：无认证 400/401 不能判断地域；`generativelanguage` 可用 ≠ Antigravity 可用 |
 
 ## 记录格式规范
 
@@ -72,3 +82,4 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini 等）在日常使用�
 - 涉及密钥、Token、个人隐私的内容已脱敏或省略
 - 记录中提到的代理节点名称与实际出口 IP 可能不一致（机场运营商标注问题），以实测 `curl https://ipinfo.io/json` 结果为准
 - 各 AI 平台的地域白名单相互独立，不可根据一个平台的可用性类推另一个平台
+- **验证判据修正（2026-10-17）**：`2026-09-04` Antigravity 记录中「无认证 POST 返回 401 = 地域通过」的判据已被实验证伪——在「被拒 IP」上做同样的无认证请求同样返回 401。判断 Antigravity 地区限制请使用带账号真实调用（`scripts/antigravity-silent-check.sh` / `agy -p`）。同理，`generativelanguage` + API Key 的探测结果也不能代表 Antigravity 是否可用。

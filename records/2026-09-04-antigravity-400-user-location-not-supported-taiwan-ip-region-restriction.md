@@ -449,3 +449,7 @@ tail -f ~/Library/Logs/Antigravity/language_server.log | grep -E "(http_helpers|
 ---
 
 *本文档记录了一次完整的 Google Antigravity 内部端点地域白名单限制排查过程，核心教训：Antigravity 走的是 Google 内部 Daily 通道而非公开 Gemini API，其地域策略独立且未公开；验证地域是否通过最可靠的方法是直接向端点发请求看返回 401 还是 400，而非依赖第三方 IP 数据库；各 AI 平台的地域白名单相互独立，同一 IP 对 OpenAI 和 Google 的判定可能完全相反。*
+
+---
+
+> **勘误（2026-10-17）**：本文「验证地域是否通过的最可靠方法：直接发请求看返回码」一节中，「无认证请求返回 401 = 地域通过」这一判据已被后续实验证伪——在**已确认被拒**的出口 IP 上，无认证 POST `loadCodeAssist` 同样返回 `401 UNAUTHENTICATED`（与可用 IP 完全一致）。原因是 Antigravity 的地区校验发生在认证之后的业务层，无认证请求到不了该层。正确做法是使用**带账号的真实调用**（官方 CLI `agy -p "Reply with exactly: PONG"` 或 Antigravity 本体）来判断。详见 `2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md`。本文其余结论（内部 Daily 通道独立地域判定、按出口 IP 判定、换节点即可恢复）仍然有效。
