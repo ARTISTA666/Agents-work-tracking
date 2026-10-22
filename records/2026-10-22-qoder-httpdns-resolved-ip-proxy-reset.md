@@ -9,7 +9,7 @@
   - 第二轮 `2026-10-22-qoder-clash-direct-routing.md`（运行时 config.yaml 置顶 DIRECT）
   - 第三轮 `2026-10-22-qoder-flclash-persistent-direct-rules.md`（持久库 `DOMAIN_SUFFIX qoder.sh/.com/.ai → DIRECT`）
 - **本轮报错时间**：2026-10-22 15:19–15:32（Asia/Shanghai）
-- **最终状态**：网络层已定位并持久化修复（裸 IP 实测由 ECONNRESET 变 200）；真实对话轮次待用户实发确认（见文末验证表）。
+- **最终状态**：✅ 已解决。网络层定位并持久化修复（裸 IP 实测由 ECONNRESET 变 200），用户实发消息确认 Qoder 真实对话恢复可用。
 - **关联仓库**：[Agents-work-tracking](https://github.com/ARTISTA666/Agents-work-tracking)
 
 ### Agent 分工与时间线
@@ -170,11 +170,24 @@ bash qoder-httpdns-ip-direct.sh rollback   # 删除本轮 IP 规则并重启
 | 修后裸 IP 实测 | `8.222.76.136` → 200（0.77s）、`8.222.84.63` → 200（0.52s） | ✅ |
 | 模型流端点首包 | `POST .../sse/agent_chat_generation`（裸 IP）→ 200 且保持 SSE | ✅ |
 | 其他流量 | 域名规则、国内 GEOIP、Antigravity PROCESS-PATH 等规则未改动 | ✅ |
-| **真实模型对话轮次** | 待用户在 Qoder 实发一条消息验收（见下方备注） | ⏳ |
+| **真实模型对话轮次** | ✅ 用户实发消息确认 Qoder 已可正常使用（19:0x 反馈「Coder 现在可以了」） | ✅ |
 
-> 备注：本轮修复的是「连接被 RST」；控制面与裸 IP 通路均已实测 200。真实对话仍需实发一条确认端到端（Agent 无法在不接管用户鼠标的前提下安全点击 Qoder 自绘输入框）。
+> 备注：本轮修复的是「连接被 RST」；控制面与裸 IP 通路均已实测 200，最终由用户实发消息验收通过。
+> 验收方法备注：Qoder 的聊天输入框是自绘 web 编辑器，后台 AXPress 会被 Chromium 吞掉；不要为此抢占用户鼠标——让用户点一次「重试/发送」比注入全局鼠标事件更可靠。
 
 ---
+
+## 边界说明：与同日 ChatGPT 故障无关
+
+当天 19:00 用户反馈「GPT 的网也出现问题了」。经规则作用域与时间线双重核对，**与本轮 Qoder 修复无关**：
+
+- 本轮新增的持久规则只有两条：`IP_CIDR,8.208.0.0/12,DIRECT`、`IP_CIDR,47.57.0.0/16,DIRECT`（阿里云亚太/香港），**不包含任何 OpenAI / Cloudflare 网段**；
+- ChatGPT 域名实时命中仍是 `DomainSuffix chatgpt.com → 🤖AI网站 → 美国节点`，未被改动；
+- 时间线：本轮改动 15:40；ChatGPT 最后正常 turn-complete 16:00；Cloudflare 挑战风暴出现在 19:00–19:06。
+
+ChatGPT 侧的独立故障（cf_clearance 与出口 IP 轮换不同步 + 一次 DNS 缓存污染 + 额度耗尽）另见
+[2026-10-22-chatgpt-desktop-cloudflare-clearance-egress-ip-rotation.md](2026-10-22-chatgpt-desktop-cloudflare-clearance-egress-ip-rotation.md)。
+为写持久规则/固定代理节点，期间重启过 FlClash；重启窗口可能造成一次 DNS 缓存污染（已在另篇记录判据），与本轮规则改动本身无关。
 
 ## 经验沉淀与后续建议
 
