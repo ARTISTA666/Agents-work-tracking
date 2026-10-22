@@ -10,6 +10,13 @@
 #
 #   判别特征：网页端 dot 正常 + 桌面侧栏无 dot + 听写麦克风也消失 + model_provider 非 openai。
 #
+#   第二种成因（2026-10-22 22:10 实测）：启动期网络抖动导致账号能力初始化失败。
+#   orbit 能力还依赖 accounts/check → tbo_config.tbo_available；若 App 启动时正遇网络切换/出口 IP 轮换
+#   （日志出现 ERR_NETWORK_CHANGED / ERR_INTERNET_DISCONNECTED、Statsig bootstrap 失败、
+#   app_start 耗时 > 30s、Orbit messaging 事件为 0），入口同样不渲染，且不会自愈（窗口聚焦重取无效），
+#   需要在网络稳定后完全重启 App。
+#   判别：听写麦克风是否同时消失 —— 一起消失=配置门控；只有 dot 消失且听写仍在=启动期初始化失败。
+#
 # 幂等：apply 前自动时间戳备份；已为 openai 则跳过；rollback 还原最近一次备份。
 # 用法：
 #   bash chatgpt-dot-entry-provider-check.sh check     # 只读诊断（默认）
@@ -58,13 +65,37 @@ for key,val in prof.items():
 PY
 
   echo
-  if [ "$PROVIDER" = "custom" ]; then
-    echo ">>> 判定：model_provider=custom —— 会触发「第一方推理」门控，桌面端隐藏 dot 入口与听写（命中本故障）"
-    echo ">>> 修复：先完全退出 App，再执行：bash $0 apply"
-  elif [ "$PROVIDER" = "openai" ]; then
-    echo ">>> 判定：model_provider=openai（或未设置）—— 不命中本故障；若仍无入口请查 App 日志与账号资格"
+  echo "=== 最近一次启动诊断（判断是否为第二种成因）==="
+  LOGDIR="$HOME/Library/Logs/com.openai.codex/$(date +%Y/%m/%d)"
+  LATEST_T0="$(ls -1t "$LOGDIR"/*-t0-i1-*.log 2>/dev/null | head -1)"
+  STARTUP_ORBIT=-1
+  if [ -n "$LATEST_T0" ]; then
+    STARTUP_DUR="$(grep -a 'name=app_start' "$LATEST_T0" 2>/dev/null | grep -o 'durationMs=[0-9.]*' | head -1 | cut -d= -f2)"
+    STATSIG_ERR="$(grep -a -c 'Statsig: error while bootstrapping' "$LATEST_T0" 2>/dev/null)"
+    NET_ERR="$(grep -a -c 'ERR_NETWORK_CHANGED\|ERR_INTERNET_DISCONNECTED' "$LATEST_T0" 2>/dev/null)"
+    STARTUP_ORBIT="$(grep -a -c 'Orbit messaging' "$LATEST_T0" 2>/dev/null)"
+    echo "日志: $(basename "$LATEST_T0")"
+    echo "启动耗时: ${STARTUP_DUR:-未知} ms（>30000 视为异常）"
+    echo "网络切换错误: ${NET_ERR:-0} 次；Statsig bootstrap 失败: ${STATSIG_ERR:-0} 次"
+    echo "Orbit messaging 事件: ${STARTUP_ORBIT} 次（0 = 本次启动未加载 dot 数据）"
+    if [ "${STARTUP_ORBIT}" = "0" ] || [ "${STATSIG_ERR:-0}" != "0" ] || [ "${NET_ERR:-0}" != "0" ]; then
+      echo ">>> 警告：本次启动存在网络/初始化异常，可能是第二种成因（启动期账号能力初始化失败）"
+    fi
   else
-    echo ">>> 判定：model_provider=$PROVIDER（非 openai）—— 同样会触发门控，命中本故障"
+    echo "未找到今天的 App 日志（$LOGDIR），跳过启动诊断"
+  fi
+
+  echo
+  if [ "$PROVIDER" = "custom" ]; then
+    echo ">>> 判定：model_provider=custom —— 会触发「第一方推理」门控，桌面端隐藏 dot 入口与听写（命中第一成因）"
+    echo ">>> 修复：先完全退出 App，再执行：bash $0 apply"
+  elif [ "$PROVIDER" = "openai" ] && [ "$STARTUP_ORBIT" = "0" ]; then
+    echo ">>> 判定：provider 已是 openai，但本次启动未加载 dot 数据 —— 命中第二成因（启动期账号能力初始化失败）"
+    echo ">>> 修复：确认网络/代理稳定后，Cmd+Q 完全退出 ChatGPT 再重开（无需改配置）"
+  elif [ "$PROVIDER" = "openai" ]; then
+    echo ">>> 判定：model_provider=openai 且启动已加载 dot 数据 —— 不命中以上两种成因；若仍无入口请查 App 日志与账号资格"
+  else
+    echo ">>> 判定：model_provider=$PROVIDER（非 openai）—— 同样会触发门控，命中第一成因"
     echo ">>> 修复：先完全退出 App，再执行：bash $0 apply"
   fi
 }

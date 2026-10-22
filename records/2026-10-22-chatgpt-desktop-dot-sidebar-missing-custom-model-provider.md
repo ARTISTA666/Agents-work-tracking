@@ -1,4 +1,4 @@
-# ChatGPT 桌面版侧栏 dot 入口消失、网页端仍正常：本地 `model_provider = "custom"` 触发「要求第一方推理」的能力门控，隐藏了 orbit（dot）侧栏入口；改回 `openai` 并完全重启后恢复
+# ChatGPT 桌面版侧栏 dot 入口消失、网页端仍正常：本地 `model_provider = "custom"` 触发「要求第一方推理」的能力门控，隐藏了 orbit（dot）侧栏入口；改回 `openai` 并完全重启后恢复（附同日 22:10 复发：第二种成因「启动期网络抖动导致账号能力初始化失败」，再次完全重启恢复）
 
 ## 基本信息
 
@@ -6,7 +6,7 @@
 - **问题类型**：AI 桌面客户端（ChatGPT.app / Codex 桌面版 26.1016.61520）**能力门控导致导航入口静默隐藏**，被误读为「dot 被删除 / 账号权限丢失 / 地区限制 / 应用版本 bug」
 - **报错时间**：10-21 应用自更新后开始找不到入口（用户于 2026-10-22 13:52 报障：「桌面版的 gpt 里面的 dot 入口找不到了，但是网页端还能看到」）
 - **解决确认时间**：2026-10-22 14:00（改配置 + 完全重启后，侧栏出现「你的 dot」，听写麦克风同时恢复）
-- **最终状态**：✅ 已解决。桌面端侧栏恢复 dot 入口；dot 数据本身自始至终未丢失（当日 13:21 仍在正常同步）
+- **最终状态**：✅ 两次均已恢复，dot 数据自始至终未丢失（当日 13:21 仍在正常同步）。第一次为**配置门控**（`model_provider = "custom"`，改 `openai` 解决）；同日 **22:10 复发为第二种成因**——**启动期网络抖动导致账号能力初始化失败**（见文末「复发与二次定位」），完全重启即恢复，配置无需再改
 - **关联仓库**：[Agents-work-tracking](https://github.com/ARTISTA666/Agents-work-tracking)
 
 ### Agent 分工与时间线
@@ -23,6 +23,10 @@
 | 14:00 | DSH Agent | 完全退出 App → 备份 `config.toml` → 第 7 行改 `openai` → 重启 |
 | **14:00:30** | DSH Agent | 截图验证：侧栏「新聊天」下方出现「你的 dot」（带 1 条未读），输入框麦克风恢复 |
 | 14:03 | 用户 | 要求同步过程到本仓库，并到官方 issue 补充英文评论 |
+| **22:10** | 用户 | 复发报障：「dot 现在又消失了」（配置仍为 `openai`，版本未变） |
+| 22:10–22:11 | DSH Agent | 只读取证：听写仍在（排除 provider 门控）、dot 档案仍 available；定位到 22:08 启动期网络抖动（52.6s 启动、Statsig bootstrap 失败 ×6、`Orbit messaging` 0 次） |
+| 22:11 | DSH Agent | 仅激活窗口强制重取：无效（入口未恢复，证明不能自愈） |
+| **22:12** | DSH Agent | 网络稳定后完全退出重开：`app_start 6.6s`、`Orbit messaging` 36 次、侧栏「你的 dot」恢复 |
 
 ---
 
@@ -199,6 +203,41 @@ cp -p ~/.codex/config.toml.bak-dot-<时间戳> ~/.codex/config.toml
 
 ---
 
+## 复发与二次定位（2026-10-22 22:08–22:12）：第二种成因——启动期账号能力初始化失败
+
+14:00 修复后入口正常。**22:10 用户反馈「dot 现在又消失了」**，但本次现场与第一次不同，且配置/版本均未回退：
+
+| 检查项 | 22:10 现场事实 |
+| --- | --- |
+| `model_provider` | 仍为 `openai`（14:00 的修复未被回退）；App 版本仍 `26.1016.61520`（build 21421） |
+| 侧栏 dot 入口 | ❌ 消失（只剩「新聊天 / 置顶 / 项目 / 最近」） |
+| **听写麦克风** | ✅ **仍在**（说明 `requiresFirstPartyInference` 检查已通过，**不是** provider 问题） |
+| dot 数据 | `cloud-aeon-profiles` 仍 `available`；`primary-aeon-selection` 正常 |
+
+**断点证据（`~/Library/Logs/com.openai.codex/2026/10/22/codex-desktop-00b4d836-…-96324-t0-i1-140807-0.log`）：**
+
+- 22:08:07 App 重启；**启动耗时 `app_start durationMs=52653.8`**（正常约 6.5s），`shell_visible` 到 52.2s 才出现
+- 22:08:57–22:08:58 连续 `ERR_NETWORK_CHANGED` → `ERR_INTERNET_DISCONNECTED`，`POST /wham/statsig/bootstrap` 失败 **6 次**（`Statsig: error while bootstrapping post-login client attemptNumber=6`）
+- 整个会话 **`Orbit messaging` 阶段 0 次** → dot 房间/数据从未加载（对比正常启动为 30+ 次）
+- 22:11 仅把窗口激活（期望 `refetchOnWindowFocus: always` 触发重取）**未恢复**入口
+
+**恢复验证：22:12 完全退出重开（此时网络已稳定）**
+
+- `app_start durationMs=6570.3`（正常）
+- `Orbit messaging` 36 次
+- 侧栏「你的 dot」恢复；随后 `sa_server_request_failed` 计数为 0
+
+**机理推断：** `orbit` 能力 = `accounts/check → tbo_config.tbo_available` + 第一方推理检查。启动期恰好遇到网络切换，账号能力/统计初始化失败后该能力保持 false，侧栏入口不渲染，且**不会自愈**（窗口聚焦重取无效），必须完全重启重新初始化。与同日 19:00 的 [cf_clearance / 出口 IP 轮换记录](2026-10-22-chatgpt-desktop-cloudflare-clearance-egress-ip-rotation.md)同源：出口 IP 轮换 → `cf_clearance` 失效 → 鉴权/账号检查 403/超时 → 启动变慢 + 能力初始化失败。
+
+### 两类成因的快速判别
+
+| 现象组合 | 指向 | 处置 |
+| --- | --- | --- |
+| 侧栏无 dot **+ 听写也消失 + `model_provider` 非 `openai`** | 配置门控（本篇第一因） | `model_provider = "openai"` → **完全退出**后重开 |
+| 侧栏无 dot **+ 听写仍在 + provider 已是 `openai`** + 启动耗时异常/日志有 `ERR_NETWORK*`、`Statsig: error` | 启动期账号能力初始化失败（本段） | **等网络稳定** → Cmd+Q 完全退出 → 重开；不用改配置 |
+
+---
+
 ## 经验沉淀与后续建议
 
 1. **「网页端正常、桌面端入口消失」先怀疑本地配置驱动的能力门控，而不是账号/地区。** 网页与桌面读取的判定输入不同：桌面额外受 `~/.codex/config.toml` 影响。
@@ -206,8 +245,10 @@ cp -p ~/.codex/config.toml.bak-dot-<时间戳> ~/.codex/config.toml
 3. **读 App 自带 bundle 验证门控是低成本高确定性手段**：`app.asar` 可用 Python 解析头部（`4 / headerSize / …`）直接抽取 `webview/assets/app-initial-*.js`，再用关键字定位能力表与判断式。
 4. **`requiresFirstPartyInference` 是这批功能（dot、听写、语音、图片生成、朗读）的共同开关。** 只要 `model_provider` 不是 `openai`，这些入口可能一起消失——排查时把「同类入口是否同时消失」作为强特征。
 5. **改配置前必须完全退出 App**，否则运行实例可能在退出时写回；改后必须做「退出 + 重启」复测。
-6. **凡是“官方疑似 bug”的结论，配套给出可恢复的本地动作 + 上游 issue 链接**，便于后续版本修复后回切。
-7. 官方同类报告：[#55783](https://github.com/openai/codex/issues/55783)（macOS dot 消失）、#51213（侧栏消失、后台任务继续）、#50283（升级后消失 + `/accounts/check` 432）、#55996（iPhone/桌面同时消失 + 账号不可用弹窗）。
+6. **入口消失有两类成因，用「听写是否同时消失」一秒分流**：同类入口一起没=配置门控；只有 dot 没而听写还在=账号能力初始化失败（重启可恢复）。
+7. **桌面版启动期对网络非常敏感**：启动耗时 > 30s、日志出现 `ERR_NETWORK_CHANGED`/`ERR_INTERNET_DISCONNECTED`/`Statsig: error` 时，后续 UI 可能缺入口或缺按钮，且不会自愈；先把网络/节点稳定下来再重启 App，是最省事的恢复路径。
+8. **凡是“官方疑似 bug”的结论，配套给出可恢复的本地动作 + 上游 issue 链接**，便于后续版本修复后回切。
+9. 官方同类报告：[#55783](https://github.com/openai/codex/issues/55783)（macOS dot 消失）、#51213（侧栏消失、后台任务继续）、#50283（升级后消失 + `/accounts/check` 432）、#55996（iPhone/桌面同时消失 + 账号不可用弹窗）。
 
 ---
 
@@ -224,8 +265,12 @@ cp -p ~/.codex/config.toml.bak-dot-<时间戳> ~/.codex/config.toml
   - `primary-aeon-selection-v1`（主 dot 选择）
   - `cloud-aeon-profiles-v1:[…]`（dot 档案，`aeon_kind: orbit`，`status: available`）
 - 应用日志：`~/Library/Logs/com.openai.codex/2026/10/22/codex-desktop-*-<pid>-t0-i1-*.log`
+  - 首次（配置门控）：`…-92254-t0-i1-060005-0.log`（14:00 前后）
+  - 复发（启动期失败）：`…-96324-t0-i1-140807-0.log`（`app_start 52.6s`、`Statsig: error` ×6、`Orbit messaging` 0 次）
+  - 恢复（干净重启）：`…-97730-t0-i1-141229-0.log`（`app_start 6.6s`、`Orbit messaging` 36 次）
 - 版本历史：10-20 build 20770 → 10-21 build 21161（`26.1016.51333`）→ 10-22 build 21421（`26.1016.61520`）
-- 验证截图：`~/Desktop/dot入口恢复-2026-10-22-1400.png`
+- 验证截图：`~/Desktop/dot入口恢复-2026-10-22-1400.png`（首次）；22:12 复发恢复后「你的 dot」同样出现在「新聊天」下方
 - 仓库脚本：`scripts/chatgpt-dot-entry-provider-check.sh`
+- 关联记录：[2026-10-22 ChatGPT 桌面版 cf_clearance / 出口 IP 轮换](2026-10-22-chatgpt-desktop-cloudflare-clearance-egress-ip-rotation.md)（复发时的网络侧背景）
 
-*结论：本故障不是 dot 丢失、不是账号权限、也不是网络问题，而是本地 `model_provider = "custom"` 触发「第一方推理」能力门控，导致桌面端隐藏 dot 侧栏入口与听写按钮；改回 `openai` 并完全重启即恢复，dot 数据无任何丢失。*
+*结论：本故障不是 dot 丢失、不是账号权限。第一次是本地 `model_provider = "custom"` 触发「第一方推理」能力门控，改回 `openai` 并完全重启即恢复；同日 22:10 复发是第二种成因——启动期网络抖动（`ERR_NETWORK_CHANGED`/`ERR_INTERNET_DISCONNECTED`、Statsig bootstrap 失败）导致账号能力初始化失败，入口不渲染且不自愈，在网络稳定后完全重启即恢复，配置无需再改。两次均未影响 dot 数据。*
