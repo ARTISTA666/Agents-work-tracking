@@ -19,8 +19,10 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
     ├── antigravity-node-probe.sh     # Antigravity 逐节点静默体检（隔离 mihomo + agy）
     ├── qoder-add-bypass.sh           # Qoder 域名加入 macOS 代理绕过列表（直连，幂等，首轮）
     ├── qoder-rollback-bypass.sh      # Qoder 绕过列表回滚（恢复修复前原始条目，首轮）
-    ├── qoder-clash-direct.sh         # 第二轮：mihomo 规则置顶 qoder DIRECT + 备份 + 热重载（幂等）
-    ├── qoder-clash-rollback.sh       # 第二轮：移除 qoder DIRECT 规则并热重载
+    ├── qoder-clash-direct.sh         # 第二轮：mihomo 规则置顶 qoder DIRECT + 备份 + 热重载（幂等，运行时文件，会被重建清空）
+    ├── qoder-clash-rollback.sh       # 第二轮：移除运行时 qoder DIRECT 规则并热重载
+    ├── qoder-flclash-persist.sh          # 第三轮：qoder DIRECT 写入持久库 database.sqlite 的 rules 表（备份/退出/写库/重启/校验，幂等）
+    ├── qoder-flclash-persist-rollback.sh # 第三轮：删除持久库 qoder 规则并重启回滚
     ├── codex-desktop-send-block-check.sh  # Codex 桌面版发送被禁用：check 诊断 / apply 改回 local / rollback（幂等，改动前备份）
     └── chatgpt-dot-entry-provider-check.sh  # 桌面版 dot 入口消失：check 诊断 / apply 改 model_provider=openai / rollback（幂等，改动前备份）
 ```
@@ -33,11 +35,12 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 
 | 文件 | 问题摘要 | 根因 | 状态 |
 | --- | --- | --- | --- |
+| [qoder-flclash-persistent-direct-rules.md](records/2026-10-22-qoder-flclash-persistent-direct-rules.md) | 第二轮直连规则被 FlClash 重建清空，使用仍弹「系统发生异常，请重试」，模型流 `ERR_CONNECTION_CLOSED`、QCS `NETWORK_ERROR` | 运行时 config.yaml 是订阅合并产物、重建即丢；qoder 落兜底 Match→代理节点被 TLS 重置。改写入持久库 database.sqlite 的 rules 表（`DOMAIN_SUFFIX qoder.sh/.com/.ai → DIRECT`），重启置顶且跨重建不丢 | ✅ 路由层根治并持久化（`/rules` 命中 52、全 qoder 主机 DIRECT、致命错误 0、QCS 200/SSE connected；真实对话轮次待用户实发确认；含持久化/回滚脚本） |
 | [chatgpt-desktop-dot-sidebar-missing-custom-model-provider.md](records/2026-10-22-chatgpt-desktop-dot-sidebar-missing-custom-model-provider.md) | ChatGPT 桌面版侧栏 dot 入口消失（网页端 `chatgpt.com/dots` 仍正常），听写麦克风同时消失；疑为 dot 被删/账号权限/地区限制 | **本地配置触发的第一方推理能力门控**：侧栏 dot 入口依赖 `orbit` 能力（`requiresFirstPartyInference: true`），gate `3683713372` 生效时校验 `(model_provider ?? "openai") === "openai"`；本机 `~/.codex/config.toml` 为 `model_provider = "custom"`（实际是 OpenAI 别名）→ 判 false → 入口组件返回 `null`。dot 档案本身 `available/active`，网页端不读本地配置故正常。判别特征：网页正常 + 侧栏无 dot + 听写也消失 + provider 非 openai | ✅ 已解决（改回 `openai` + 完全重启，侧栏「你的 dot」与听写恢复；dot 数据零丢失；含诊断/修复/回滚脚本与上游 issue 索引） |
 | [antigravity-startup-proxy-update-and-gemini-egress-fix.md](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md) | Antigravity 反复打不开，打开后 Gemini 仍报地区拒绝；更新检查反复 `ERR_UNSAFE_PORT` | 后端未自动继承系统代理；更新地址被改为固定无效端口 `127.0.0.1:1`；一般 Google 分流跟随自动节点，真实生成被拒。恢复官方 2.25.0、补齐应用专用代理环境、持久化后端 `PROCESS-PATH` 专用出口 | ✅ 已解决（桌面 Gemini 两次真实回复，FlClash 重启及访达冷启动复验通过；含证据、配置、回退和旧判据适用边界） |
 | [codex-desktop-send-disabled-cloud-env-missing.md](records/2026-10-22-codex-desktop-send-disabled-cloud-env-missing.md) | ChatGPT.app / Codex 桌面版「发消息点击完全没反应」：UI 正常、登录正常、输入框可输入，但发送按钮始终灰态禁用，日志中全天 `turn/start` = 0、无任何网络请求 | **UI 前置校验死锁**：执行位置 `new-task-execution-by-account-project` 被持久化为 `cloud(远程)`，而账号 `environment-catalog` 为空（`hasEnvironments:false`）→ 要求「先选云端环境」却无环境可选 → 发送按钮永久 disabled，点击被 UI 层吞掉。判别特征：位置标签「远程」+ 悬停提示「请选择一个云端环境，然后继续」 | ✅ 已解决（改回「此计算机/local」，按钮由灰变白，实发消息 `turn/started`→`turn/completed` 回复 OK，退出重启后持久；含诊断/修复/回滚脚本） |
-| [qoder-clash-direct-routing.md](records/2026-10-22-qoder-clash-direct-routing.md) | 首轮绕过列表后 Qoder 能打开但使用仍报网络问题：模型流 `ERR_CONNECTION_CLOSED`、协作 wss `ENOTFOUND`、team-profiles `CLOSED` | TUN/fake-ip 全局接管，系统绕过列表只管 7890 入口、管不到 TUN 规则；qoder 被送进代理节点被 TLS 重置，DIRECT 77ms 正常。在 mihomo 规则置顶 `qoder.sh/.com/.ai → DIRECT` 并热重载 | ✅ 已解决（getUserPlan 200、RemoteControl 204、协作全 200、wss 101 建立，网络错误 0；含应用/回滚脚本） |
-| [qoder-network-ssl-reset-direct-bypass.md](records/2026-10-22-qoder-network-ssl-reset-direct-bypass.md) | Qoder 启动自检 `foundation/model/messaging/resources` 四项全 `network` 失败（637ms 快速失败），日志 `openapi.qoder.sh` 报 `net::ERR_CONNECTION_CLOSED`、更新检查 `fetch failed` | 代理客户端正常、普通站点经代理 200，唯独 Qoder 阿里云海外后端（`*.qoder.sh`/`*.qoder.com`）经 FlClash 代理时 TLS 握手被重置；直连全部可达。属单域名分流路由问题，非断网/DNS/服务端/账号 | ✅ 首轮解决（把 4 条 qoder 域名加入 macOS Wi-Fi 代理绕过列表走直连；第二轮确认 TUN 下权威修复在 mihomo 规则 DIRECT，绕过列表冗余保留） |
+| [qoder-clash-direct-routing.md](records/2026-10-22-qoder-clash-direct-routing.md) | 首轮绕过列表后 Qoder 能打开但使用仍报网络问题：模型流 `ERR_CONNECTION_CLOSED`、协作 wss `ENOTFOUND`、team-profiles `CLOSED` | TUN/fake-ip 全局接管，系统绕过列表只管 7890 入口、管不到 TUN 规则；qoder 被送进代理节点被 TLS 重置，DIRECT 77ms 正常。当时在运行时 config.yaml 置顶 `qoder.sh/.com/.ai → DIRECT` 并热重载 | ⚠️ 当时热重载有效但运行时文件被 FlClash 重建清空导致复发，已被[第三轮持久化根治](records/2026-10-22-qoder-flclash-persistent-direct-rules.md)取代；该轮诊断（TUN 接管、DIRECT 通/节点重置）仍成立 |
+| [qoder-network-ssl-reset-direct-bypass.md](records/2026-10-22-qoder-network-ssl-reset-direct-bypass.md) | Qoder 启动自检 `foundation/model/messaging/resources` 四项全 `network` 失败（637ms 快速失败），日志 `openapi.qoder.sh` 报 `net::ERR_CONNECTION_CLOSED`、更新检查 `fetch failed` | 代理客户端正常、普通站点经代理 200，唯独 Qoder 阿里云海外后端（`*.qoder.sh`/`*.qoder.com`）经 FlClash 代理时 TLS 握手被重置；直连全部可达。属单域名分流路由问题，非断网/DNS/服务端/账号 | ✅ 首轮解决（把 4 条 qoder 域名加入 macOS Wi-Fi 代理绕过列表走直连；第二轮确认 TUN 下权威修复在 mihomo 规则 DIRECT，绕过列表冗余保留；第三轮固化到持久库） |
 
 ### 2026-10-17
 
@@ -73,7 +76,7 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 | **地域限制 / IP 白名单** | [2026-10-22 桌面 Gemini 出口对照与真实生成](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)、Antigravity 400 User location not supported（[2026-09-04 台湾 IP](records/2026-09-04-antigravity-400-user-location-not-supported-taiwan-ip-region-restriction.md)、[2026-10-17 新加坡 IP](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md)）、ChatGPT unsupported country |
 | **代理客户端故障** | FlClash 未运行、FlClash `autoRun=false` 冷启动不自动开代理、ClashX Meta 架构缺陷与迁移 |
 | **AI 客户端 UI 门禁 / 按钮禁用 / 入口消失（非网络）** | [2026-10-22 Codex 桌面版发送禁用](records/2026-10-22-codex-desktop-send-disabled-cloud-env-missing.md)：执行位置=远程(cloud) 且云端环境目录为空 → 发送按钮永久禁用，「点了没反应」且日志零请求；用悬停 tooltip 取证，改回「此计算机(local)」修复。[2026-10-22 桌面版 dot 入口消失](records/2026-10-22-chatgpt-desktop-dot-sidebar-missing-custom-model-provider.md)：`model_provider` 非 `openai` 触发第一方推理能力门控 → 侧栏 dot 与听写一起隐藏；改回 `openai` + 重启恢复（`scripts/chatgpt-dot-entry-provider-check.sh`） |
-| **代理分流 / 单域名直连绕过** | [2026-10-22 Qoder 首轮](records/2026-10-22-qoder-network-ssl-reset-direct-bypass.md)：系统绕过列表；[2026-10-22 Qoder 第二轮](records/2026-10-22-qoder-clash-direct-routing.md)：TUN/fake-ip 下绕过列表失效，mihomo 规则置顶 `qoder.sh/.com/.ai → DIRECT`（`scripts/qoder-clash-direct.sh` / `qoder-clash-rollback.sh`） |
+| **代理分流 / 单域名直连绕过** | [2026-10-22 Qoder 首轮](records/2026-10-22-qoder-network-ssl-reset-direct-bypass.md)：系统绕过列表；[第二轮](records/2026-10-22-qoder-clash-direct-routing.md)：TUN/fake-ip 下绕过列表失效，运行时 config.yaml 置顶 DIRECT（会被重建清空）；[第三轮根治](records/2026-10-22-qoder-flclash-persistent-direct-rules.md)：写入持久库 rules 表 `qoder.sh/.com/.ai → DIRECT`（`scripts/qoder-flclash-persist.sh` / `qoder-flclash-persist-rollback.sh`） |
 | **DNS 污染 / 泄漏** | FlClash 8.8.8.8 污染、ClashX Meta IPv6 DNS 泄漏 |
 | **API 报错 / 参数错** | ZCode 400 Invalid request body、ZCode 401 中断 |
 | **Antigravity 专项** | [2026-10-22 启动、后端代理、无效更新源、专用进程分流与冷启动验证](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)；历史 Antigravity 400 地域限制记录、FlClash 连通性排查、静默自检/节点探针脚本 |
@@ -105,3 +108,4 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 - **验证判据修正（2026-10-17）**：`2026-09-04` Antigravity 记录中「无认证 POST 返回 401 = 地域通过」的判据已被实验证伪——在「被拒 IP」上做同样的无认证请求同样返回 401。判断 Antigravity 地区限制请使用带账号真实调用（`scripts/antigravity-silent-check.sh` / `agy -p`）。同理，`generativelanguage` + API Key 的探测结果也不能代表 Antigravity 是否可用。
 - **桌面版验证补充（2026-10-22）**：独立 `agy` CLI 不命中桌面 `language_server` 的 `PROCESS-PATH` 规则；使用 CLI 自检时需核对模型、环境及实际代理链。桌面问题应以桌面版真实 Gemini 生成验收，并验证配置重建和正常冷启动。[本次详细记录](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)同时纠正了旧桌面材料对 `ERR_UNSAFE_PORT` 的解释：现场是固定无效更新 URL，而非已证实的随机端口冲突。
 - **能力门控判据（2026-10-22）**：「网页端有、桌面端入口消失」不等于账号/地区问题。ChatGPT 桌面版会读取本地 `~/.codex/config.toml`，`orbit`（dot）、`dictation`（听写）、`voice.realtime`、图片生成、朗读等能力带 `requiresFirstPartyInference: true`，会校验 `(model_provider ?? "openai") === "openai"`；`model_provider` 为自定义值时这些入口会被静默隐藏（无报错、无日志）。判别方法：同类入口是否一起消失 + 检查 `model_provider`。参见 [2026-10-22 桌面版 dot 入口消失](records/2026-10-22-chatgpt-desktop-dot-sidebar-missing-custom-model-provider.md)。
+- **持久化判据修正（2026-10-22 第三轮 Qoder）**：Clash/FlClash 的运行时合并配置（config.yaml）会被订阅更新/重启重建，手写进去的规则会丢；自定义分流必须写客户端持久层（FlClash `database.sqlite` 的 rules 表 / GUI 自定义规则 / Override），并在退出客户端后离线写库、重启实证。
