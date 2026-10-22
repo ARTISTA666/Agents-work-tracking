@@ -20,7 +20,8 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
     ├── qoder-add-bypass.sh           # Qoder 域名加入 macOS 代理绕过列表（直连，幂等，首轮）
     ├── qoder-rollback-bypass.sh      # Qoder 绕过列表回滚（恢复修复前原始条目，首轮）
     ├── qoder-clash-direct.sh         # 第二轮：mihomo 规则置顶 qoder DIRECT + 备份 + 热重载（幂等）
-    └── qoder-clash-rollback.sh       # 第二轮：移除 qoder DIRECT 规则并热重载
+    ├── qoder-clash-rollback.sh       # 第二轮：移除 qoder DIRECT 规则并热重载
+    └── codex-desktop-send-block-check.sh  # Codex 桌面版发送被禁用：check 诊断 / apply 改回 local / rollback（幂等，改动前备份）
 ```
 
 ## 记录列表
@@ -31,6 +32,7 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 
 | 文件 | 问题摘要 | 根因 | 状态 |
 | --- | --- | --- | --- |
+| [codex-desktop-send-disabled-cloud-env-missing.md](records/2026-10-22-codex-desktop-send-disabled-cloud-env-missing.md) | ChatGPT.app / Codex 桌面版「发消息点击完全没反应」：UI 正常、登录正常、输入框可输入，但发送按钮始终灰态禁用，日志中全天 `turn/start` = 0、无任何网络请求 | **UI 前置校验死锁**：执行位置 `new-task-execution-by-account-project` 被持久化为 `cloud(远程)`，而账号 `environment-catalog` 为空（`hasEnvironments:false`）→ 要求「先选云端环境」却无环境可选 → 发送按钮永久 disabled，点击被 UI 层吞掉。判别特征：位置标签「远程」+ 悬停提示「请选择一个云端环境，然后继续」 | ✅ 已解决（改回「此计算机/local」，按钮由灰变白，实发消息 `turn/started`→`turn/completed` 回复 OK，退出重启后持久；含诊断/修复/回滚脚本） |
 | [qoder-clash-direct-routing.md](records/2026-10-22-qoder-clash-direct-routing.md) | 首轮绕过列表后 Qoder 能打开但使用仍报网络问题：模型流 `ERR_CONNECTION_CLOSED`、协作 wss `ENOTFOUND`、team-profiles `CLOSED` | TUN/fake-ip 全局接管，系统绕过列表只管 7890 入口、管不到 TUN 规则；qoder 被送进代理节点被 TLS 重置，DIRECT 77ms 正常。在 mihomo 规则置顶 `qoder.sh/.com/.ai → DIRECT` 并热重载 | ✅ 已解决（getUserPlan 200、RemoteControl 204、协作全 200、wss 101 建立，网络错误 0；含应用/回滚脚本） |
 | [qoder-network-ssl-reset-direct-bypass.md](records/2026-10-22-qoder-network-ssl-reset-direct-bypass.md) | Qoder 启动自检 `foundation/model/messaging/resources` 四项全 `network` 失败（637ms 快速失败），日志 `openapi.qoder.sh` 报 `net::ERR_CONNECTION_CLOSED`、更新检查 `fetch failed` | 代理客户端正常、普通站点经代理 200，唯独 Qoder 阿里云海外后端（`*.qoder.sh`/`*.qoder.com`）经 FlClash 代理时 TLS 握手被重置；直连全部可达。属单域名分流路由问题，非断网/DNS/服务端/账号 | ✅ 首轮解决（把 4 条 qoder 域名加入 macOS Wi-Fi 代理绕过列表走直连；第二轮确认 TUN 下权威修复在 mihomo 规则 DIRECT，绕过列表冗余保留） |
 
@@ -67,6 +69,7 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 | --- | --- |
 | **地域限制 / IP 白名单** | Antigravity 400 User location not supported（[2026-09-04 台湾 IP](records/2026-09-04-antigravity-400-user-location-not-supported-taiwan-ip-region-restriction.md)、[2026-10-17 新加坡 IP](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md)）、ChatGPT unsupported country |
 | **代理客户端故障** | FlClash 未运行、FlClash `autoRun=false` 冷启动不自动开代理、ClashX Meta 架构缺陷与迁移 |
+| **AI 客户端 UI 门禁 / 按钮禁用（非网络）** | [2026-10-22 Codex 桌面版发送禁用](records/2026-10-22-codex-desktop-send-disabled-cloud-env-missing.md)：执行位置=远程(cloud) 且云端环境目录为空 → 发送按钮永久禁用，「点了没反应」且日志零请求；用悬停 tooltip 取证，改回「此计算机(local)」修复 |
 | **代理分流 / 单域名直连绕过** | [2026-10-22 Qoder 首轮](records/2026-10-22-qoder-network-ssl-reset-direct-bypass.md)：系统绕过列表；[2026-10-22 Qoder 第二轮](records/2026-10-22-qoder-clash-direct-routing.md)：TUN/fake-ip 下绕过列表失效，mihomo 规则置顶 `qoder.sh/.com/.ai → DIRECT`（`scripts/qoder-clash-direct.sh` / `qoder-clash-rollback.sh`） |
 | **DNS 污染 / 泄漏** | FlClash 8.8.8.8 污染、ClashX Meta IPv6 DNS 泄漏 |
 | **API 报错 / 参数错** | ZCode 400 Invalid request body、ZCode 401 中断 |
@@ -95,4 +98,5 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 - 涉及密钥、Token、个人隐私的内容已脱敏或省略
 - 记录中提到的代理节点名称与实际出口 IP 可能不一致（机场运营商标注问题），以实测 `curl https://ipinfo.io/json` 结果为准
 - 各 AI 平台的地域白名单相互独立，不可根据一个平台的可用性类推另一个平台
+- **归因判据修正（2026-10-22）**：当现象是「点击无反应」且应用日志中**完全没有对应 RPC**（如 `turn/start` 恒为 0）时，应优先怀疑**客户端 UI 前置校验/按钮禁用**，而不是网络。网络类故障必然会留下超时、连接重置或失败请求；一条请求都没有说明动作在渲染层就被拦下。最便宜的取证手段是**悬停被禁用的按钮读取 tooltip**。参见 [2026-10-22 Codex 桌面版发送禁用](records/2026-10-22-codex-desktop-send-disabled-cloud-env-missing.md)。
 - **验证判据修正（2026-10-17）**：`2026-09-04` Antigravity 记录中「无认证 POST 返回 401 = 地域通过」的判据已被实验证伪——在「被拒 IP」上做同样的无认证请求同样返回 401。判断 Antigravity 地区限制请使用带账号真实调用（`scripts/antigravity-silent-check.sh` / `agy -p`）。同理，`generativelanguage` + API Key 的探测结果也不能代表 Antigravity 是否可用。
