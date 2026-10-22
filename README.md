@@ -1,6 +1,6 @@
 # Agents Work Tracking
 
-AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini 等）在日常使用中遇到的报错、故障、网络问题与代理配置的深度排查记录。每篇记录均包含完整的报错信息、排查过程、根因分析、解决方案与验证结果，可作为同类问题的参考手册。
+AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常使用中遇到的报错、故障、网络问题与代理配置的深度排查记录。每篇记录均包含完整的报错信息、排查过程、根因分析、解决方案与验证结果，可作为同类问题的参考手册。
 
 ## 目录结构
 
@@ -11,16 +11,25 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini 等）在日常使用�
 │   ├── 2026-09-02-*.md
 │   ├── 2026-09-03-*.md
 │   ├── 2026-09-04-*.md
-│   └── 2026-10-17-*.md
+│   ├── 2026-10-17-*.md
+│   └── 2026-10-22-*.md
 └── scripts/                  # 排查过程中编写的辅助脚本
     ├── apibai-retry-proxy.py
     ├── antigravity-silent-check.sh   # Antigravity 出口静默自检（真实调用）
-    └── antigravity-node-probe.sh     # Antigravity 逐节点静默体检（隔离 mihomo + agy）
+    ├── antigravity-node-probe.sh     # Antigravity 逐节点静默体检（隔离 mihomo + agy）
+    ├── qoder-add-bypass.sh           # Qoder 域名加入 macOS 代理绕过列表（直连，幂等）
+    └── qoder-rollback-bypass.sh      # Qoder 绕过列表回滚（恢复修复前原始条目）
 ```
 
 ## 记录列表
 
 按时间倒序排列。
+
+### 2026-10-22
+
+| 文件 | 问题摘要 | 根因 | 状态 |
+| --- | --- | --- | --- |
+| [qoder-network-ssl-reset-direct-bypass.md](records/2026-10-22-qoder-network-ssl-reset-direct-bypass.md) | Qoder 启动自检 `foundation/model/messaging/resources` 四项全 `network` 失败（637ms 快速失败），日志 `openapi.qoder.sh` 报 `net::ERR_CONNECTION_CLOSED`、更新检查 `fetch failed` | 代理客户端正常、普通站点经代理 200，唯独 Qoder 阿里云海外后端（`*.qoder.sh`/`*.qoder.com`）经 FlClash 代理时 TLS 握手被重置；直连全部可达。属单域名分流路由问题，非断网/DNS/服务端/账号 | ✅ 已解决（把 4 条 qoder 域名加入 macOS Wi-Fi 代理绕过列表走直连，其余流量仍走代理；含备份与回滚脚本） |
 
 ### 2026-10-17
 
@@ -55,10 +64,11 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini 等）在日常使用�
 | --- | --- |
 | **地域限制 / IP 白名单** | Antigravity 400 User location not supported（[2026-09-04 台湾 IP](records/2026-09-04-antigravity-400-user-location-not-supported-taiwan-ip-region-restriction.md)、[2026-10-17 新加坡 IP](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md)）、ChatGPT unsupported country |
 | **代理客户端故障** | FlClash 未运行、FlClash `autoRun=false` 冷启动不自动开代理、ClashX Meta 架构缺陷与迁移 |
+| **代理分流 / 单域名直连绕过** | [2026-10-22 Qoder](records/2026-10-22-qoder-network-ssl-reset-direct-bypass.md)：代理正常但 `qoder.sh`/`qoder.com` 经代理 TLS 被重置，加入系统绕过列表走直连（含 `scripts/qoder-add-bypass.sh` / `qoder-rollback-bypass.sh`） |
 | **DNS 污染 / 泄漏** | FlClash 8.8.8.8 污染、ClashX Meta IPv6 DNS 泄漏 |
 | **API 报错 / 参数错** | ZCode 400 Invalid request body、ZCode 401 中断 |
 | **Antigravity 专项** | Antigravity 400 地域限制（两次）、FlClash 排查中涉及 Antigravity 连通性、静默自检/节点探针脚本 |
-| **macOS 网络配置** | FlClash DNS 修正与开机自启、ClashX Meta 彻底卸载 |
+| **macOS 网络配置** | FlClash DNS 修正与开机自启、ClashX Meta 彻底卸载、Qoder 代理绕过列表（networksetup bypassdomains） |
 | **验证判据修正** | [2026-10-17 记录](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md)：无认证 400/401 不能判断地域；`generativelanguage` 可用 ≠ Antigravity 可用 |
 
 ## 记录格式规范
