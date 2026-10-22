@@ -1,5 +1,7 @@
 # Antigravity 调用 Gemini 报 HTTP 400「User location is not supported」：新加坡SG-A 出口 IP 被 Google 内部 Daily 通道拒绝，切日本JP-HY2 后静默 CLI 全量恢复，并修正「无认证 401 可判地域」的错误判据
 
+> **2026-10-22 后续验证与适用范围补充**：见 [Antigravity 启动、代理、更新与桌面 Gemini 修复记录](2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)。10 月 17 日的节点失败是当时已测样本的历史结果，不能扩大为整个订阅永久不可用；10 月 22 日在同一「赔钱机场」订阅的美国圣何塞 07 节点，桌面 Gemini 已两次真实生成成功，其中一次是在 FlClash 重启及 Antigravity 从访达冷启动后。另，本篇独立 `agy` CLI 的进程路径与桌面 `language_server` 不同，不命中后续新增的桌面专用 `PROCESS-PATH` 规则；复用自检时应核对实际分流和模型，桌面故障需补充桌面真实调用。以下原文保留当时的过程与结论。
+
 ## 基本信息
 
 - **处理者身份**：DeepSeek Harness（DSH）Agent（本次会话 AI 协作代理，主排查与根因定位；全程采用静默排查方式）
