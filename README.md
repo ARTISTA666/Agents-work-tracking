@@ -12,7 +12,8 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 │   ├── 2026-09-03-*.md
 │   ├── 2026-09-04-*.md
 │   ├── 2026-10-17-*.md
-│   └── 2026-10-22-*.md
+│   ├── 2026-10-22-*.md
+│   └── 2026-10-23-*.md
 └── scripts/                  # 排查过程中编写的辅助脚本
     ├── apibai-retry-proxy.py
     ├── antigravity-silent-check.sh   # Antigravity 出口静默自检（真实调用）
@@ -32,6 +33,12 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 ## 记录列表
 
 按时间倒序排列。
+
+### 2026-10-23
+
+| 文件 | 问题摘要 | 根因 | 状态 |
+| --- | --- | --- | --- |
+| [macos-internet-accounts-google-reauth-stuck-alert-cannot-become-key-window.md](records/2026-10-23-macos-internet-accounts-google-reauth-stuck-alert-cannot-become-key-window.md) | 系统设置 → 互联网账户里重新验证 Google 账户后弹「无法验证账户名或密码。」，弹窗「好」按钮点击完全无反应（无高亮、无消失、回车也无效） | 两层：① **直接原因**——Safari 的 `ASWebAuthenticationSession` 认证窗口在 5.4 秒后被关闭（OAuth 取消，`Code=1`），扩展校验凭据失败（`com.apple.accounts Code=3`）；② **按钮失灵**——该错误提示由 `InternetAccountsSettingsExtension`（后台 appex）以 `_NSAlertPanel` 弹出，但面板 `canBecomeKeyWindow = NO`，永远无法成为 key window，按钮 action 不触发（macOS 26.6 缺陷；同一会话连续 3 次同类 AppKit 告警）。判据：`log show --predicate 'eventMessage CONTAINS "canBecomeKeyWindow"'` | ✅ 已解决（`pkill -f InternetAccountsSettingsExtension` 清掉僵尸窗口后，点已有 Google 账户「打开浏览器」完整重走 OAuth；08:03:38 凭据校验成功、Mail 自动创建 `imap.gmail.com`、通讯录子账户 active/enabled；用户确认「可以了」） |
 
 ### 2026-10-22
 
@@ -85,6 +92,7 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 | **API 报错 / 参数错** | ZCode 400 Invalid request body、ZCode 401 中断 |
 | **Antigravity 专项** | [2026-10-22 启动、后端代理、无效更新源、专用进程分流与冷启动验证](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)；历史 Antigravity 400 地域限制记录、FlClash 连通性排查、静默自检/节点探针脚本 |
 | **macOS 网络配置** | FlClash DNS 修正与开机自启、ClashX Meta 彻底卸载、Qoder 代理绕过列表（networksetup bypassdomains） |
+| **macOS 系统设置 / 系统扩展僵尸弹窗（非应用故障）** | [2026-10-23 互联网账户重新验证 Google 失败，弹窗「好」点击无反应](records/2026-10-23-macos-internet-accounts-google-reauth-stuck-alert-cannot-become-key-window.md)：`_NSAlertPanel` 的 `canBecomeKeyWindow=NO` → 窗口可见但按钮永远无效（点击/回车/AXPress 都不生效）；系统设置子系统跑在独立 `.appex`，`pkill -f InternetAccountsSettingsExtension` 即清窗，再完整走 OAuth 恢复。「无法验证账户名或密码」多为授权被取消而非密码错 |
 | **验证判据修正** | [2026-10-22 记录](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)：CLI 与桌面后端进程路径、分流规则可能不同，不能互代验收；节点测试只代表当时样本。[2026-10-17 记录](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md)：无认证 400/401 不能判断地域；`generativelanguage` 可用 ≠ Antigravity 可用 |
 
 ## 记录格式规范
@@ -116,3 +124,4 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 - **Cloudflare 凭证 / 出口 IP 判据（2026-10-22 ChatGPT 桌面版）**：桌面客户端「刷新成功/失败来回跳、偶发 403」时，先采样出口 IP（`curl https://chatgpt.com/cdn-cgi/trace` 连续 5 次看 `ip=` 是否唯一）。机场 NAT 池 / IPv6 轮换出口会让 Cloudflare `cf_clearance`（按 IP 绑定）反复失效。另：`dscacheutil -q host` 返回真实 IP 而 `dig` 返回 `198.18.x` = DNS 缓存污染（多见于 FlClash/TUN 重启窗口），与机场故障无关；界面出现 `You're out of Codex and Work usage` 则是额度问题。参见 [记录](records/2026-10-22-chatgpt-desktop-cloudflare-clearance-egress-ip-rotation.md)。
 - **HTTPDNS / 自解析裸 IP 判据（2026-10-22 第四轮 Qoder）**：客户端「能登录、能拉模型列表，但一发消息就 500 / 会话异常」时，除看域名分流，必须确认它实际连的是主机名还是**自解析裸 IP**（Qoder SDK `networkMode=httpdns`）。判别：同一目标主机名 `curl` 通、`--resolve` 到指定裸 IP 挂即可复现；`DOMAIN-SUFFIX` 规则对裸 IP 不生效，需补 `IP_CIDR` 或启用 sniffer。真实错误看 `~/.qoder/logs/runs/*/qodercli.log` 的 `route_source/resolved_ip/failure_phase`。参见 [第四轮记录](records/2026-10-22-qoder-httpdns-resolved-ip-proxy-reset.md)。
 - **持久化判据修正（2026-10-22 第三轮 Qoder）**：Clash/FlClash 的运行时合并配置（config.yaml）会被订阅更新/重启重建，手写进去的规则会丢；自定义分流必须写客户端持久层（FlClash `database.sqlite` 的 rules 表 / GUI 自定义规则 / Override），并在退出客户端后离线写库、重启实证。
+- **系统扩展僵尸弹窗判据（2026-10-23）**：macOS 系统设置的子系统（互联网账户等）运行在独立 `.appex` 进程；其弹出的 `_NSAlertPanel` 若留下 `makeKeyWindow … returned NO from -[NSWindow canBecomeKeyWindow]` 日志，则该窗口可见但按钮永远无效（点击、回车、`AXPress` 都不生效）。不要反复点或直接重启，执行 `pkill -f InternetAccountsSettingsExtension`（或强退系统设置）清窗后重走流程即可。另：系统级「无法验证账户名或密码。」通常是 OAuth 授权被取消（先查 Safari `AuthenticationSession` 日志是否 `User closed … canceling session`），不是密码错误。参见 [2026-10-23 记录](records/2026-10-23-macos-internet-accounts-google-reauth-stuck-alert-cannot-become-key-window.md)。
