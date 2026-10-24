@@ -13,7 +13,8 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 │   ├── 2026-09-04-*.md
 │   ├── 2026-10-17-*.md
 │   ├── 2026-10-22-*.md
-│   └── 2026-10-23-*.md
+│   ├── 2026-10-23-*.md
+│   └── 2026-10-24-*.md
 └── scripts/                  # 排查过程中编写的辅助脚本
     ├── apibai-retry-proxy.py
     ├── antigravity-silent-check.sh   # Antigravity 出口静默自检（真实调用）
@@ -27,12 +28,19 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
     ├── codex-desktop-send-block-check.sh  # Codex 桌面版发送被禁用：check 诊断 / apply 改回 local / rollback（幂等，改动前备份）
     ├── chatgpt-dot-entry-provider-check.sh  # 桌面版 dot 入口消失：check 诊断 / apply 改 model_provider=openai / rollback（幂等，改动前备份）
     ├── qoder-httpdns-ip-direct.sh          # 第四轮：Qoder 自解析裸 IP 绕过分流 → 持久库 IP_CIDR→DIRECT：check / apply / rollback（幂等，改动前备份）
-    └── chatgpt-ai-node-stability.sh        # ChatGPT 桌面版 cf_clearance 失效：检测/固定 AI 分组出口稳定节点：check / apply / rollback（改动前备份）
+    ├── chatgpt-ai-node-stability.sh        # ChatGPT 桌面版 cf_clearance 失效：检测/固定 AI 分组出口稳定节点：check / apply / rollback（改动前备份）
+    └── gemini-web-egress-pin.sh            # Gemini 网页「不支持你所在地区」：把 gemini.google.com 固定到干净美国出口：check / apply / rollback（幂等，改动前备份，热重载）
 ```
 
 ## 记录列表
 
 按时间倒序排列。
+
+### 2026-10-24
+
+| 文件 | 问题摘要 | 根因 | 状态 |
+| --- | --- | --- | --- |
+| [gemini-web-unsupported-country-ai-node-egress.md](records/2026-10-24-gemini-web-unsupported-country-ai-node-egress.md) | Gemini 网页端整页「Gemini isn't currently supported in your country. Stay tuned!」，同一台机器上 Antigravity 里的 Gemini 却正常 | 网页流量命中订阅规则 `DOMAIN,gemini.google.com → 🤖AI网站`，该组当时选中 **0.1 倍廉价中转（美国08）**，其出口 IP 会漂移且被 Google 地理库判为**香港**（实测 `www.google.com` 302 到 `google.com.hk`，出口 `67.159.48.146/147` Cloudflare 认为 SG、Google 认为 HK；Gemini 不支持香港）；Antigravity 因早有一条 `PROCESS-PATH` 覆写被固定到圣何塞07（`134.195.101.x`，Google 判 US）所以一直正常。被拦页面还会被 Chrome 缓存 → 表现为“时好时坏 + 强刷也不变”，无痕/curl 正常 | ✅ 已解决（新增覆写规则 `DOMAIN,gemini.google.com → 🇺🇸美国圣何塞07｜三网推荐`：写入持久库 `rules` 表 + 热重载；Chrome 原窗口刷新即恢复；**完全退出并重启 FlClash 后规则仍在**（配置 17:00:09 重建、规则在第 1628 行）；含 [`scripts/gemini-web-egress-pin.sh`](scripts/gemini-web-egress-pin.sh) check/apply/rollback 与备份/回滚） |
 
 ### 2026-10-23
 
