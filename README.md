@@ -14,7 +14,8 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 │   ├── 2026-10-17-*.md
 │   ├── 2026-10-22-*.md
 │   ├── 2026-10-23-*.md
-│   └── 2026-10-24-*.md
+│   ├── 2026-10-24-*.md
+│   └── 2026-10-28-*.md
 └── scripts/                  # 排查过程中编写的辅助脚本
     ├── apibai-retry-proxy.py
     ├── antigravity-silent-check.sh   # Antigravity 出口静默自检（真实调用）
@@ -35,6 +36,12 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 ## 记录列表
 
 按时间倒序排列。
+
+### 2026-10-28
+
+| 文件 | 问题摘要 | 根因 | 状态 |
+| --- | --- | --- | --- |
+| [gemini-web-and-antigravity-intermittent-egress-hk-region-reject.md](records/2026-10-28-gemini-web-and-antigravity-intermittent-egress-hk-region-reject.md) | 用户报「Gemini 网页端 + Antigravity 内 Gemini 同时都无法连接」；复核时 `gemini.google.com` 经 TUN / 无头 Chrome 均 `200` 正常（10/10），Antigravity 主程序 7 条连接全部走圣何塞07，但 `agy` 真实调用稳定复现 `400 FAILED_PRECONDITION: User location is not supported` | **结构性根因（10-24 复发）**：默认分流 `🚀节点选择 → 🇺🇸美国节点 → 🇺🇸美国圣何塞03｜三网推荐` 仍落在共享 NAT 池廉价中转，出口 `104.251.122.87` 被 Google 判**香港**（`google.com → google.com.hk`，Cloudflare 却报 US），Antigravity 内部端点 `daily-cloudcode-pa` 地区校验更严 → **请求级随机 400**（同 IP、同分钟，`agy` 连续两次一成一败）。「两者同时挂」的**同时性**来自 09:11–09:16 连续 `connection reset` + 09:16 FlClash 内核重启（`config.yaml` 重建）掐断在途连接；网页端因 10-24 已固定圣何塞07，恢复后不再受影响 | ✅ 已定位 + 用户确认恢复（本次**零持久改动**，临时切换已还原）；⚠️ 复发风险仍在，可选修复：① 默认出口移出共享廉价中转、② 给 `agy` 加 `PROCESS-PATH → 圣何塞07`（记录内含复发判别三步、命令速查与回退） |
 
 ### 2026-10-24
 
