@@ -1,11 +1,12 @@
-# Gemini 网页端 + Antigravity 内 Gemini「同时连不上」：默认分流仍在共享廉价中转、出口被 Google 判香港导致请求级地区拒绝（10-24 同根因复发）；网页端因固定圣何塞07 已恢复，Antigravity 侧同 IP 同分钟一成一败
+# Gemini 网页端 + Antigravity 内 Gemini「同时连不上」：默认分流仍在共享廉价中转、出口被 Google 判香港导致请求级地区拒绝（10-24 同根因复发）；已完成方案 A：默认分流固定到圣何塞07（写库持久化 + 跨 FlClash 重启验证）
 
 ## 基本信息
 
 - **处理者身份**：DeepSeek Harness Agent（用户指派；全程只读诊断 + 一次可回滚的节点切换实验，测完立即还原）
 - **问题类型**：梯子分流 + 机场出口 IP 地理判定（Gemini 网页端 / Antigravity 的 Gemini 后端通道）
 - **时间**：2026-10-28 09:18–10:20（Asia/Shanghai）
-- **最终状态**：✅ 已定位、已恢复（用户 10:11 确认「两个都通了」）。本次**未做任何持久改动**（未改规则、未改节点选择、未改配置），只做了验证性临时切换并已还原。**复发风险仍在**：默认分流仍落在共享/轮换的「三网推荐 / 0.1 倍」廉价中转上，机场出口池里大量 IP 被 Google 判为香港，Antigravity 内部端点对每个请求随机命中受限出口就会 400。
+- **最终状态**：✅ **已修复**。分两段：① 09:19–10:15 为只读诊断 + 一次可回滚的临时节点切换（已 `trap` 还原）；② **10:16–10:21 执行方案 A**——把 `🚀节点选择` 从 `🇺🇸美国节点`（子组落在共享廉价中转）固定到 `🇺🇸美国圣何塞07｜三网推荐`，并写入 FlClash 持久库 `profiles.selected_map`；**完全退出并重启 FlClash 后选择仍在**（config 10:17 重建、`utun4` 恢复、两条覆写规则未动）。修复后：出口 `134.195.101.193/194`（US）、`google.com` 不再 302 到 `google.com.hk`、`gemini.google.com` 3/3 `200`、`agy` 连续 2/2 `PONG`。
+- **备份 / 脚本**：`~/Desktop/gemini-check/backup-20261028-101619/`（config.yaml + database.sqlite）；[`scripts/default-egress-pin.sh`](../scripts/default-egress-pin.sh)（`check` / `apply` / `rollback`，含写库与重启复验）。
 - **关联记录**：[2026-10-24 Gemini 网页端地区限制（同根因）](2026-10-24-gemini-web-unsupported-country-ai-node-egress.md)、[2026-10-17 Antigravity 400 User location is not supported](2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md)、[2026-10-22 AI 节点出口 IP 轮换](2026-10-22-chatgpt-desktop-cloudflare-clearance-egress-ip-rotation.md)
 - **关联脚本**：[`scripts/antigravity-silent-check.sh`](../scripts/antigravity-silent-check.sh)（本次用它做 Antigravity 侧真实调用判定）
 - **本机留档**：本次为只读诊断，未截图、未改配置；证据全部来自下列日志与本记录内的命令输出
@@ -142,29 +143,53 @@ curl -s -o /dev/null -D - https://www.google.com/ | grep -i '^location:'
 
 ---
 
-## 解决方案 / 处置
+## 解决方案与处置（已执行方案 A）
 
-本次**未做持久改动**，只做了验证性临时切换并已还原。要根治复发，二选一（均建议先备份）：
+### 方案 A（已执行）：默认出口移出共享廉价中转
 
-### 方案 A：默认出口移出共享廉价中转（改动最小）
-
-在 FlClash 里把 `🚀节点选择`（或至少 `🇺🇸美国节点` 子组）从「三网推荐 / 0.1 倍」换到实测干净出口：
+把 `🚀节点选择` 从 `🇺🇸美国节点` 换到实测干净的固定出口 `🇺🇸美国圣何塞07｜三网推荐`：
 
 ```
-🇺🇸美国圣何塞07｜三网推荐     出口 134.195.101.193（US）
+🇺🇸美国圣何塞07｜三网推荐     出口 134.195.101.193 / .194（US）
   - google.com 不 302 到 google.com.hk
   - agy 真实调用 PONG
 ```
 
-### 方案 B：给 `agy` 单独钉出口（不动全局）
+**执行步骤（10:16–10:21，共约 5 分钟）**
+
+| 步 | 动作 | 结果 |
+| --- | --- | --- |
+| 1 | 备份 `config.yaml` + `database.sqlite` → `~/Desktop/gemini-check/backup-20261028-101619/` | ✅ |
+| 2 | mihomo API `PUT /proxies/🚀节点选择 {"name":"🇺🇸美国圣何塞07 \| 三网推荐"}` | 立即生效：出口 `134.195.101.194`、`google.com` 无 HK 跳转 |
+| 3 | 检查持久库：`profiles.selected_map` 仍是旧值 `🇺🇸美国节点`（API 改的是运行时，FlClash 不知道） | 确认必须写库 |
+| 4 | **完全退出 FlClash**（`osascript -e 'quit app "FlClash"'`，GUI/core 均退出）→ 写 `profiles.selected_map` → `open -a FlClash` | 重启后选择仍为圣何塞07、`utun4` 恢复 |
+| 5 | 复验 | 出口 US、`google.com` 无 HK 跳转、`gemini` 3/3 `200`、`agy` 2/2 `PONG` |
+
+选择 `🚀节点选择` **直接指向节点**（而不是继续指向 `🇺🇸美国节点` 子组）的原因：`selected_map` 只持久化了 3 个顶层分组（`GLOBAL` / `🚀节点选择` / `🤖AI网站`），**嵌套子组 `🇺🇸美国节点` 的当前选择不在库里**，重启后不可控；直接选节点才真正"钉死"。
+
+**未改动**：`🤖AI网站` 仍是 `🇺🇸美国08-0.1倍`（ChatGPT/Claude 等不受影响）；`gemini.google.com` 与 `language_server` 两条覆写规则原样保留；系统代理状态未改（TUN 全量接管）。
+
+### 方案 B（备选，未执行）：只给 `agy` 钉出口
+
+如果以后想保留 `🚀节点选择 = 🇺🇸美国节点` 的灵活性，可改为给 CLI 单独钉出口：
 
 ```
 PROCESS-PATH,/Users/yusong/.local/bin/agy,🇺🇸美国圣何塞07｜三网推荐
 ```
 
-写入 FlClash 持久库 `database.sqlite` 的 `rules` 表后热重载（照 [`scripts/gemini-web-egress-pin.sh`](../scripts/gemini-web-egress-pin.sh) 的 check/apply/rollback 与备份方式），这样 `agy` 与 Antigravity 主程序走同一个干净出口，全局分流不受影响。
+写入 FlClash 持久库 `rules` 表后热重载（照 [`scripts/gemini-web-egress-pin.sh`](../scripts/gemini-web-egress-pin.sh) 的 check/apply/rollback 方式）。本次不需要——默认出口已经干净。
 
 > 原则：**Gemini / Antigravity / ChatGPT 这类地区敏感服务，不要用 0.1 倍 / 0.01 倍廉价中转**（出口 IP 共享漂移，被判 HK/CN 的概率显著更高）。
+
+### 复用脚本
+
+[`scripts/default-egress-pin.sh`](../scripts/default-egress-pin.sh)：
+
+```bash
+bash scripts/default-egress-pin.sh check       # 只读：API/DB 选择、出口、Google 判 HK、agy 真实调用
+bash scripts/default-egress-pin.sh apply       # 备份 → 退 FlClash → 写 selected_map → 重启 → 复验
+bash scripts/default-egress-pin.sh rollback    # 回滚到最近一次 apply 前的选择
+```
 
 ---
 
@@ -175,20 +200,33 @@ PROCESS-PATH,/Users/yusong/.local/bin/agy,🇺🇸美国圣何塞07｜三网推�
 3. **Antigravity 主程序**：`/connections` 中 `language_server` 的 7 条连接（`daily-cloudcode-pa`、`aicode`、`jetski-webchannel`、`play`、`www.googleapis` 等）**全部**走圣何塞07；`language_server.log` 当日 `User location is not supported` 计数 0。
 4. **Antigravity CLI（真实调用）**：默认链路两次 400；切到圣何塞07 后 `PONG`；10:13 默认链路同 IP 连续两次一成一败 → 复现「请求级偶发」。
 5. **用户确认**：10:11 用户确认「两个都通了」。
+6. **修复后（10:21 起，跨 FlClash 重启）**：`🚀节点选择` API 值与 `selected_map` 值都是 `🇺🇸美国圣何塞07｜三网推荐`；出口 `134.195.101.193/194`（US）、`google.com` `hkredirect` 计数 **0**；`gemini.google.com/app` 3/3 `200`（2.1/2.4/3.3s，无拦截文案）；`agy` 连续 **2/2 `PONG`**；`config.yaml` 10:17 重建后两条覆写规则仍在（`/rules` 第 6、7 条，即 index 5、6）。
+7. **校验脚本**：`bash scripts/default-egress-pin.sh check` → `API 当前选择 = DB 持久值 = 圣何塞07`、`google 判 HK : 0`、`✅ Antigravity 后端正常`。
 
 ---
 
 ## 回退
 
-- 本次唯一改动是 09:24 的临时分组切换，已在同一条命令内 `trap` 还原为 `🚀节点选择 = 🇺🇸美国节点`；可用下列命令复验：
+改动前原值：`🚀节点选择 = 🇺🇸美国节点`（其子组当时为 `🇺🇸美国圣何塞03｜三网推荐`，该子组选择不受 `selected_map` 持久化影响，重启后本来就会变）。
 
 ```bash
-SEC=$(grep -m1 '^secret:' ~/Library/Application\ Support/com.follow.clash/config.yaml | sed 's/secret: *"\(.*\)"/\1/')
-curl -s -H "Authorization: Bearer $SEC" http://127.0.0.1:9090/proxies | \
-  python3 -c 'import sys,json;p=json.load(sys.stdin)["proxies"];print("节点选择 =",p["🚀节点选择"]["now"]);print("美国节点 =",p["🇺🇸美国节点"]["now"])'
+# 方式一：脚本（推荐）
+bash scripts/default-egress-pin.sh rollback
+# 从最近一次 apply 备份的 selected_map.json 恢复，并重启 FlClash
+
+# 方式二：手工（先退出 FlClash）
+osascript -e 'quit app "FlClash"'
+sqlite3 ~/Library/Application\ Support/com.follow.clash/database.sqlite \
+  "update profiles set selected_map=replace(selected_map,'🇺🇸美国圣何塞07 | 三网推荐','🇺🇸美国节点') where id=369768027173949440;"
+open -a FlClash
+
+# 方式三：恢复备份
+cp ~/Desktop/gemini-check/backup-20261028-101619/database.sqlite \
+   ~/Library/Application\ Support/com.follow.clash/database.sqlite
 ```
 
-- 若后续执行方案 A/B：改动前备份 `~/Library/Application Support/com.follow.clash/config.yaml` 与 `database.sqlite`，并保留 rollback 脚本。
+- 只在 FlClash **已退出**时写库；运行中写会被内存态覆盖。
+- 本次唯一被改的是 `profiles.selected_map`，`config.yaml` 是运行期重建产物、`rules` 表未动。
 
 ---
 
@@ -197,7 +235,9 @@ curl -s -H "Authorization: Bearer $SEC" http://127.0.0.1:9090/proxies | \
 1. **复发判别三步**（1 分钟内）：① 网页强刷 / 无痕窗口对照（排除缓存）；② 看 `/rules` 前 6 条里 `gemini.google.com` 与 `language_server` 是否还在；③ `curl -s -o /dev/null -D - https://www.google.com/ | grep -i location` 是否 302 到 `google.com.hk`，再用 `agy` 真实调用确认。
 2. **出口健康度判据**：用「`google.com` 是否 302 到 `google.com.hk`」比 Cloudflare 的 `loc=` 更贴近 Google 的真实判定（本次 `104.251.122.87`：CF 说 US，Google 说 HK）。
 3. **Antigravity 升级后要复验规则**：2.27.0 仍匹配 `language_server` 路径；未来大版本若改路径，`PROCESS-PATH` 会失效且无报错，需重新确认。
-4. **把 `agy` 纳入规则**（方案 B），否则它会一直是默认分流出口质量的"裸奔探针"。
+4. **`agy` 已不再是"裸奔探针"**：默认组固定到圣何塞07 后它同样走干净出口（2/2 `PONG`）。若将来把 `🚀节点选择` 改回 `🇺🇸美国节点` 之类会随订阅轮换的选择，记得补方案 B 的 `PROCESS-PATH` 规则。
+5. **出口失效的应急换法**：圣何塞07 若波动，用 `bash scripts/default-egress-pin.sh apply "🇺🇸美国洛杉矶08 | 三网推荐"` 换节点——**先跑 `check` 确认候选节点 `google 判 HK : 0` + `agy PONG`**，不要凭节点名判断。
+6. **重启后自检**（可选）：把 `scripts/default-egress-pin.sh check` 加进开机流程或手动跑一次，确认 `API 当前选择 = DB 持久值 = 干净节点`。
 
 ---
 

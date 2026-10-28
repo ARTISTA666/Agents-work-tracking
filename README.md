@@ -30,7 +30,8 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
     ├── chatgpt-dot-entry-provider-check.sh  # 桌面版 dot 入口消失：check 诊断 / apply 改 model_provider=openai / rollback（幂等，改动前备份）
     ├── qoder-httpdns-ip-direct.sh          # 第四轮：Qoder 自解析裸 IP 绕过分流 → 持久库 IP_CIDR→DIRECT：check / apply / rollback（幂等，改动前备份）
     ├── chatgpt-ai-node-stability.sh        # ChatGPT 桌面版 cf_clearance 失效：检测/固定 AI 分组出口稳定节点：check / apply / rollback（改动前备份）
-    └── gemini-web-egress-pin.sh            # Gemini 网页「不支持你所在地区」：把 gemini.google.com 固定到干净美国出口：check / apply / rollback（幂等，改动前备份，热重载）
+    ├── gemini-web-egress-pin.sh            # Gemini 网页「不支持你所在地区」：把 gemini.google.com 固定到干净美国出口：check / apply / rollback（幂等，改动前备份，热重载）
+    └── default-egress-pin.sh               # 默认分流出口固定到干净节点（防 400 地区拒绝）：写 FlClash 持久库 selected_map + 退/重启复验：check / apply / rollback
 ```
 
 ## 记录列表
@@ -41,7 +42,7 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 
 | 文件 | 问题摘要 | 根因 | 状态 |
 | --- | --- | --- | --- |
-| [gemini-web-and-antigravity-intermittent-egress-hk-region-reject.md](records/2026-10-28-gemini-web-and-antigravity-intermittent-egress-hk-region-reject.md) | 用户报「Gemini 网页端 + Antigravity 内 Gemini 同时都无法连接」；复核时 `gemini.google.com` 经 TUN / 无头 Chrome 均 `200` 正常（10/10），Antigravity 主程序 7 条连接全部走圣何塞07，但 `agy` 真实调用稳定复现 `400 FAILED_PRECONDITION: User location is not supported` | **结构性根因（10-24 复发）**：默认分流 `🚀节点选择 → 🇺🇸美国节点 → 🇺🇸美国圣何塞03｜三网推荐` 仍落在共享 NAT 池廉价中转，出口 `104.251.122.87` 被 Google 判**香港**（`google.com → google.com.hk`，Cloudflare 却报 US），Antigravity 内部端点 `daily-cloudcode-pa` 地区校验更严 → **请求级随机 400**（同 IP、同分钟，`agy` 连续两次一成一败）。「两者同时挂」的**同时性**来自 09:11–09:16 连续 `connection reset` + 09:16 FlClash 内核重启（`config.yaml` 重建）掐断在途连接；网页端因 10-24 已固定圣何塞07，恢复后不再受影响 | ✅ 已定位 + 用户确认恢复（本次**零持久改动**，临时切换已还原）；⚠️ 复发风险仍在，可选修复：① 默认出口移出共享廉价中转、② 给 `agy` 加 `PROCESS-PATH → 圣何塞07`（记录内含复发判别三步、命令速查与回退） |
+| [gemini-web-and-antigravity-intermittent-egress-hk-region-reject.md](records/2026-10-28-gemini-web-and-antigravity-intermittent-egress-hk-region-reject.md) | 用户报「Gemini 网页端 + Antigravity 内 Gemini 同时都无法连接」；复核时 `gemini.google.com` 经 TUN / 无头 Chrome 均 `200` 正常（10/10），Antigravity 主程序 7 条连接全部走圣何塞07，但 `agy` 真实调用稳定复现 `400 FAILED_PRECONDITION: User location is not supported` | **结构性根因（10-24 复发）**：默认分流 `🚀节点选择 → 🇺🇸美国节点 → 🇺🇸美国圣何塞03｜三网推荐` 仍落在共享 NAT 池廉价中转，出口 `104.251.122.87` 被 Google 判**香港**（`google.com → google.com.hk`，Cloudflare 却报 US），Antigravity 内部端点 `daily-cloudcode-pa` 地区校验更严 → **请求级随机 400**（同 IP、同分钟，`agy` 连续两次一成一败）。「两者同时挂」的**同时性**来自 09:11–09:16 连续 `connection reset` + 09:16 FlClash 内核重启（`config.yaml` 重建）掐断在途连接；网页端因 10-24 已固定圣何塞07，恢复后不再受影响 | ✅ **已修复（方案 A）**：`🚀节点选择` 固定为 `🇺🇸美国圣何塞07｜三网推荐`，写入持久库 `profiles.selected_map`，**完全退出并重启 FlClash 后仍生效**（config 10:17 重建、`utun4` 恢复、两条覆写规则未动）；修复后出口 `134.195.101.193/194`（US）、`google.com` 无 HK 跳转、Gemini 3/3 `200`、`agy` 2/2 `PONG`；备份 `~/Desktop/gemini-check/backup-20261028-101619/`，含 [`scripts/default-egress-pin.sh`](scripts/default-egress-pin.sh) check/apply/rollback 与方案 B 备选 |
 
 ### 2026-10-24
 
