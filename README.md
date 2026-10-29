@@ -15,7 +15,8 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 │   ├── 2026-10-22-*.md
 │   ├── 2026-10-23-*.md
 │   ├── 2026-10-24-*.md
-│   └── 2026-10-28-*.md
+│   ├── 2026-10-28-*.md
+│   └── 2026-10-29-*.md
 └── scripts/                  # 排查过程中编写的辅助脚本
     ├── apibai-retry-proxy.py
     ├── antigravity-silent-check.sh   # Antigravity 出口静默自检（真实调用）
@@ -31,12 +32,19 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
     ├── qoder-httpdns-ip-direct.sh          # 第四轮：Qoder 自解析裸 IP 绕过分流 → 持久库 IP_CIDR→DIRECT：check / apply / rollback（幂等，改动前备份）
     ├── chatgpt-ai-node-stability.sh        # ChatGPT 桌面版 cf_clearance 失效：检测/固定 AI 分组出口稳定节点：check / apply / rollback（改动前备份）
     ├── gemini-web-egress-pin.sh            # Gemini 网页「不支持你所在地区」：把 gemini.google.com 固定到干净美国出口：check / apply / rollback（幂等，改动前备份，热重载）
-    └── default-egress-pin.sh               # 默认分流出口固定到干净节点（防 400 地区拒绝）：写 FlClash 持久库 selected_map + 退/重启复验：check / apply / rollback
+    ├── default-egress-pin.sh               # 默认分流出口固定到干净节点（防 400 地区拒绝）：写 FlClash 持久库 selected_map + 退/重启复验：check / apply / rollback
+    └── antigravity-gemini-healthcheck.mjs  # Gemini 报错定性分流：按错误串区分「地域拒绝」与「请求构造被拒」，并汇总 App 版本/Squirrel 滞留、日志计数、代理 chains、界面错误卡
 ```
 
 ## 记录列表
 
 按时间倒序排列。
+
+### 2026-10-29
+
+| 文件 | 问题摘要 | 根因 | 状态 |
+| --- | --- | --- | --- |
+| [antigravity-gemini-400-invalid-argument-client-build-and-stuck-squirrel-update.md](records/2026-10-29-antigravity-gemini-400-invalid-argument-client-build-and-stuck-squirrel-update.md) | Antigravity Agent 弹窗 `Agent execution terminated due to error`，后端返回 HTTP 400 `Request contains an invalid argument.`，用户初判为梯子问题 | 与出口 IP 无关：错误串是 `INVALID_ARGUMENT`（地域拒绝恒为 `FAILED_PRECONDITION / User location is not supported`）、带账号真实调用 `agy` 同出口同分钟成功、且 10-28 已把默认分流钉在圣何塞07 之后仍出现这 4 次 400；最可能是 v2.27.0 客户端在「工具结果回传后下一轮」的请求构造被 daily-cloudcode-pa 拒绝，另叠加 Squirrel 只在退出时安装导致 v2.28.0 滞留 10 小时。附带撤回一条旧判据：匿名 POST 的 401 不能判地域 | ✅ 已解决（优雅退出触发安装 2.28.0，同工作区同模型复测工具往返 3 次调用 0 次 400）；400 为间歇性，复发时降档位并带 TraceID 上报 |
 
 ### 2026-10-28
 
@@ -74,7 +82,6 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 | 文件 | 问题摘要 | 根因 | 状态 |
 | --- | --- | --- | --- |
 | [antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md) | Antigravity 调用 Gemini 报 `HTTP 400 / FAILED_PRECONDITION / User location is not supported for the API use`，Agent 任务首次调用即终止；前一轮排查按旧判据换节点仍失败 | FlClash「节点选择」= 新加坡SG-A，出口 IP `50.7.253.42` 被 `daily-cloudcode-pa.googleapis.com` 地区校验拒绝；且旧判据（`generativelanguage` + API Key、无认证 POST 看 400/401）均不能代表 Antigravity 通道。**本篇同时用实验证伪并修正了 2026-09-04 记录中的「无认证 401 = 地域通过」判据** | ✅ 已解决（切 日本JP-HY2，静默 CLI 实测 2/2 通过；另修复 FlClash 冷启动不自动开代理）；**含同日 18:00 补充：新订阅「赔钱机场」当时已测样本被拒的复测；[10 月 22 日桌面版已在该订阅另一节点成功](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)** |
-
 ### 2026-09-04
 
 | 文件 | 问题摘要 | 根因 | 状态 |
@@ -99,17 +106,18 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 ## 按问题类型快速索引
 
 | 问题类型 | 相关记录 |
-| --- | --- |
 | **地域限制 / IP 白名单** | [2026-10-22 桌面 Gemini 出口对照与真实生成](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)、Antigravity 400 User location not supported（[2026-09-04 台湾 IP](records/2026-09-04-antigravity-400-user-location-not-supported-taiwan-ip-region-restriction.md)、[2026-10-17 新加坡 IP](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md)）、ChatGPT unsupported country |
 | **代理客户端故障** | FlClash 未运行、FlClash `autoRun=false` 冷启动不自动开代理、ClashX Meta 架构缺陷与迁移 |
 | **AI 客户端 UI 门禁 / 按钮禁用 / 入口消失（非网络）** | [2026-10-22 Codex 桌面版发送禁用](records/2026-10-22-codex-desktop-send-disabled-cloud-env-missing.md)：执行位置=远程(cloud) 且云端环境目录为空 → 发送按钮永久禁用，「点了没反应」且日志零请求；用悬停 tooltip 取证，改回「此计算机(local)」修复。[2026-10-22 桌面版 dot 入口消失](records/2026-10-22-chatgpt-desktop-dot-sidebar-missing-custom-model-provider.md)：`model_provider` 非 `openai` 触发第一方推理能力门控 → 侧栏 dot 与听写一起隐藏；改回 `openai` + 重启恢复（`scripts/chatgpt-dot-entry-provider-check.sh`，附启动诊断）；**同日 22:10 复发为第二种成因**——启动期网络抖动导致账号能力初始化失败（听写仍在、启动耗时异常、`Orbit messaging` 0 次），网络稳定后完全重启恢复；[2026-10-22 桌面版间歇报错/卡启动](records/2026-10-22-chatgpt-desktop-cloudflare-clearance-egress-ip-rotation.md)：机场出口 IP 轮换导致 Cloudflare `cf_clearance` 失效 → 403 挑战 + 重连风暴；固定出口稳定节点恢复（`scripts/chatgpt-ai-node-stability.sh`），另需区分 DNS 缓存污染与额度耗尽 |
 | **代理分流 / 单域名直连绕过** | [2026-10-22 Qoder 首轮](records/2026-10-22-qoder-network-ssl-reset-direct-bypass.md)：系统绕过列表；[第二轮](records/2026-10-22-qoder-clash-direct-routing.md)：TUN/fake-ip 下绕过列表失效，运行时 config.yaml 置顶 DIRECT（会被重建清空）；[第三轮根治](records/2026-10-22-qoder-flclash-persistent-direct-rules.md)：写入持久库 rules 表 `qoder.sh/.com/.ai → DIRECT`（`scripts/qoder-flclash-persist.sh` / `qoder-flclash-persist-rollback.sh`）；[第四轮裸 IP](records/2026-10-22-qoder-httpdns-resolved-ip-proxy-reset.md)：SDK 的 HTTPDNS 自解析裸 IP 绕过分流，按 IP 段补 `IP_CIDR 8.208.0.0/12 / 47.57.0.0/16 → DIRECT`（`scripts/qoder-httpdns-ip-direct.sh`） |
 | **DNS 污染 / 泄漏** | FlClash 8.8.8.8 污染、ClashX Meta IPv6 DNS 泄漏 |
-| **API 报错 / 参数错** | ZCode 400 Invalid request body、ZCode 401 中断 |
-| **Antigravity 专项** | [2026-10-22 启动、后端代理、无效更新源、专用进程分流与冷启动验证](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)；历史 Antigravity 400 地域限制记录、FlClash 连通性排查、静默自检/节点探针脚本 |
+| **API 报错 / 参数错** | [2026-10-29 Antigravity 400 INVALID_ARGUMENT（客户端请求构造 + Squirrel 更新滞留）](records/2026-10-29-antigravity-gemini-400-invalid-argument-client-build-and-stuck-squirrel-update.md)（错误串定性优先于换节点）； Antigravity 400 INVALID_ARGUMENT（客户端请求构造）、ZCode 400 Invalid request body、ZCode 401 中断|
+| **Antigravity 专项** | [2026-10-29 Antigravity 400 INVALID_ARGUMENT（客户端请求构造 + Squirrel 更新滞留）](records/2026-10-29-antigravity-gemini-400-invalid-argument-client-build-and-stuck-squirrel-update.md)； [2026-10-22 启动、后端代理、无效更新源、专用进程分流与冷启动验证](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)；历史 Antigravity 400 地域限制记录、FlClash 连通性排查、静默自检/节点探针脚本|
 | **macOS 网络配置** | FlClash DNS 修正与开机自启、ClashX Meta 彻底卸载、Qoder 代理绕过列表（networksetup bypassdomains） |
+| **自动更新失效** | Antigravity Squirrel 退出才安装导致 2.28.0 滞留 10 小时 |
+| **Shell 环境陷阱** | `ELECTRON_RUN_AS_NODE=1` 让 Electron 应用 0 状态秒退且零日志（易误判为升级失败） |
 | **macOS 系统设置 / 系统扩展僵尸弹窗（非应用故障）** | [2026-10-23 互联网账户重新验证 Google 失败，弹窗「好」点击无反应](records/2026-10-23-macos-internet-accounts-google-reauth-stuck-alert-cannot-become-key-window.md)：`_NSAlertPanel` 的 `canBecomeKeyWindow=NO` → 窗口可见但按钮永远无效（点击/回车/AXPress 都不生效）；系统设置子系统跑在独立 `.appex`，`pkill -f InternetAccountsSettingsExtension` 即清窗，再完整走 OAuth 恢复。「无法验证账户名或密码」多为授权被取消而非密码错 |
-| **验证判据修正** | [2026-10-22 记录](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)：CLI 与桌面后端进程路径、分流规则可能不同，不能互代验收；节点测试只代表当时样本。[2026-10-17 记录](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md)：无认证 400/401 不能判断地域；`generativelanguage` 可用 ≠ Antigravity 可用 |
+| **验证判据修正** | [2026-10-22 记录](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)：CLI 与桌面后端进程路径、分流规则可能不同，不能互代验收；节点测试只代表当时样本。[2026-10-17 记录](records/2026-10-17-antigravity-400-user-location-not-supported-singapore-node-exit-ip-rejected-and-silent-cli-verification.md)：无认证 400/401 不能判断地域；`generativelanguage` 可用 ≠ Antigravity 可用。本仓库已两次纠正过的判据（无认证 401 判地域）**不可再用于新排查**：地区校验发生在认证之后，匿名探针永远返回 401，只能用带账号的真实调用判定 |
 
 ## 记录格式规范
 
