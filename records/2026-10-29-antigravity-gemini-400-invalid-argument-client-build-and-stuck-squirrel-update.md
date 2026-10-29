@@ -346,7 +346,7 @@ env -u ELECTRON_RUN_AS_NODE open -n ~/Applications/Antigravity.app
 - **App 与日志**：`~/Applications/Antigravity.app`（Bundle ID `com.google.antigravity`）；`~/Library/Logs/Antigravity/{language_server.log,main.log}`
 - **升级现场**：`~/Library/Caches/com.google.antigravity/pending/Antigravity.zip`（185MB, 2.28.0）、`~/Library/Caches/com.google.antigravity.ShipIt/{ShipItState.plist,ShipIt_stderr.log,update.CA6lFDs/}`
 - **CDP 端口文件**：`~/Library/Application Support/Antigravity/DevToolsActivePort`（重启后端口会变；本次 63882 → 56542）
-- **本次复测会话**：cascade `c1afc5db-6b58-4da6-b455-c9c280fce7b7`（标题 `Reading Project README First Line`，位于 Minimal Diary 项目，用户可在界面删除）
+- **本次复测会话**：cascade `c1afc5db-6b58-4da6-b455-c9c280fce7b7`（标题 `Reading Project README First Line`，Minimal Diary 项目）——**已于 13:44 经 App 界面「更多 → 删除 → 删除对话」删除并核实无残留**：`brain/`、`conversations/*.db` 目录 0 命中，`conversation_summaries.db` 的 `conversation_summaries` 表 0 行，项目 json 无引用；用户自己的 `d216881d`、`8cb69454` 等会话完好（`ls brain | wc -l` 188）。删除后界面文案由汉化注入器译好（`删除对话 / 取消 / 删除`）
 - **辅助脚本**：[`scripts/antigravity-gemini-healthcheck.mjs`](../scripts/antigravity-gemini-healthcheck.mjs) —— 一条命令输出 App 版本与 Squirrel 滞留、按错误串给 400 定性（地域拒绝 vs 请求构造被拒）、`agy` 带账号真实调用（权威地域判据）、匿名端点可达性、代理 `chains` 与界面错误卡；匿名 401 在脚本里只作连通性检查，不再当作地域结论
 - **关联记录**：`2026-09-04-antigravity-400-user-location-not-supported-taiwan-ip-region-restriction.md`（同为 400 但根因相反）
 - **社区同签名参考**：oh-my-pi #9638「Gemini 3.7 Flash fails with 400 "Request contains an invalid argument" during long sessions」（临时项：新开会话 / 降思考档位）；Google IssueTracker 549870877（Android Studio Gemini 面板在文件读取后立刻 INVALID_ARGUMENT）；antigravity-cli #219（地域割裂现象，本次已排除）
