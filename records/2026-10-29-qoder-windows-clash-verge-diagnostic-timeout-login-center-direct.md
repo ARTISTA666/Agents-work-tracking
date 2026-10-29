@@ -6,7 +6,7 @@
 - **问题类型**：AI 客户端（Qoder 0.4.11 Windows 版，当天新装机）网络故障；**Clash Verge（mihomo）分流路由问题**，两阶段同一根源
 - **承接**：macOS FlClash 四轮（[首轮](records/2026-10-22-qoder-network-ssl-reset-direct-bypass.md) / [第二轮](records/2026-10-22-qoder-clash-direct-routing.md) / [第三轮持久化](records/2026-10-22-qoder-flclash-persistent-direct-rules.md) / [第四轮 HTTPDNS 裸 IP](records/2026-10-22-qoder-httpdns-resolved-ip-proxy-reset.md)）；本机为 Windows 新机 + 新代理客户端（Clash Verge），**历史 DIRECT 规则未随迁移**
 - **报错时间**：2026-10-29 13:58 起（Asia/Shanghai，UTC+8）；两阶段：诊断全红 → 补规则 → 诊断全绿 → 登录又挂 → 补规则
-- **最终状态**：✅ 网络层已解决（两处 DIRECT 规则均 curl 验证通过，网络诊断五服务全绿 1003/1336ms）；登录全流程由用户复测中
+- **最终状态**：✅ 已解决。两处 DIRECT 规则 curl 验证通过、网络诊断五服务全绿（1003/1336ms）；15:44 用户完成登录全流程复测（网页验证 → 打开 Qoder），`.qoder-app-status.json` 落盘 `logged_in: true`，Qoder 恢复可用
 - **关联仓库**：[Agents-work-tracking](https://github.com/ARTISTA666/Agents-work-tracking)
 
 ### 环境底册（Windows 机，与 macOS 四轮环境完全不同）
@@ -40,6 +40,7 @@
 | 15:30 | Trae Agent | **换最便宜的取证：`Get-DnsClientCache`** → `center.qoder.sh → 47.57.243.249`（TTL 736s，刚解析过）。curl：center 直连 **404/0.25s 正常**、走代理 **000/2.2s 失败** |
 | 15:32 | Trae Agent | 规则覆写 prepend 再加 `DOMAIN-SUFFIX,qoder.sh,DIRECT`，重启 Verge；center 走代理 **000→404/0.25s**、qoder.com 200、google 302 全验证通过 |
 | 15:35 | Trae Agent | 固化 check/apply/rollback 脚本与 mihomo 管道监视脚本，写本轮记录并推送仓库、更新索引 |
+| 15:44 | 用户 | 完整登录流程复测**成功**；`.qoder-app-status.json` 落盘 `logged_in: true`（含账号名/头像 URL），本轮终局 |
 
 ---
 
@@ -196,7 +197,7 @@ curl.exe -x http://127.0.0.1:7897 https://www.google.com   # 302，外网分流�
 | 网络诊断（Qoder 内置） | 5 服务全 timeout | **全绿，基础 1003ms / 模型 1336ms** | ✅ |
 | www.google.com 走代理 | 200/302 | 302 / 1.2s | ✅ 不受影响 |
 | 系统代理 / 订阅 / 节点 | — | 未动 | ✅ |
-| 登录全流程（网页验证 → 打开 Qoder） | AUTH_NETWORK | 待用户复测 | ⏳ |
+| 登录全流程（网页验证 → 打开 Qoder） | AUTH_NETWORK「网络错误」 | **登录成功**，`logged_in: true`（15:44 落盘验证） | ✅ |
 
 ---
 
