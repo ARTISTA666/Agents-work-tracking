@@ -1,4 +1,4 @@
-# ZCode 首次启动弹「“ZCode.app”想访问其他 App 的数据」，『允许』与『不允许』点击全无反应：TCC 提示被系统进程 `UserNotificationCenter` 托管、发起进程已退出成孤儿窗口；重启该系统进程清窗、复启 ZCode 后不再复现
+# ZCode 首次启动弹「“ZCode.app”想访问其他 App 的数据」，『允许』与『不允许』点全无反应：TCC 提示被系统进程 `UserNotificationCenter` 托管、发起进程已退出成孤儿窗口；重启该系统进程清窗、复启 ZCode 后不再复现
 
 ## 基本信息
 
@@ -35,9 +35,8 @@
 
 - 弹窗内容：文件夹图标 + 蓝色手掌角标，文案「“ZCode.app”想访问其他 App 的数据。单独存放 App 数据可让你更容易管理隐私和安全。」，底部两枚整行按钮『不允许』『允许』
 - 点击两个按钮：无高亮、无按压动画、无消失、无任何日志变化
-- 弹窗视觉位置落在豆包（Doubao）主窗口内部（截图 586×519，提示位于聊天区左上），容易误判为「豆包自己的弹窗卡住」或「提示被陷在豆包界面里」
-- 触发时机：ZCode 于同一会话中刚完成下载安装并首次启动，属首次运行时的权限请求
-- 用户在此之前已让 ZCode 停在首启页面，未进行登录等操作
+- 弹窗视觉位置落在豆包（Doubao）主窗口内部（截图 586×519，提示位于聊天区左上部），容易误判为「豆包自己的弹窗卡住」或「提示被陷在豆包界面里」
+- 触发时机：ZCode 于同一会话中刚完成下载安装并首次启动，属首次运行时的权限请求；当时停在首启页面，尚未完成任何登录操作
 
 ---
 
@@ -68,7 +67,7 @@ ps -p 8043 -o pid,stat,%cpu,etime 2>/dev/null   # 只有表头，无数据行
 ```
 
 - tccd 日志中该请求的 responsible 进程为 ZCode 主进程 **pid 8043**，accessing 进程为 `bfs` **pid 9326**
-- 两个进程此时均已不exist，提示窗口却仍在屏幕上，说明它已经失去对应的授权请求
+- 两个进程此时均已不存在，提示窗口却仍在屏幕上，说明它已失去对应的授权请求
 
 → **结论**：窗口是**孤儿**（发起方已退出），按钮背后没有活请求，点击自然无反馈。
 
@@ -133,9 +132,9 @@ log show --last 3m --predicate 'process == "tccd"' | grep -i zcode
 | 层级 | 内容 |
 | --- | --- |
 | **直接原因（触发）** | ZCode 首启时内置 `bfs` 搜索工具遍历本机目录（含其他 App 容器目录，如 `~/Library/Containers`、`~/Library/Application Support/*`），命中 macOS 的 App 数据保护，系统发起 `kTCCServiceSystemPolicyAppData` 授权请求 |
-| **深层原因（按钮失灵）** | 该提示窗口由系统进程 `UserNotificationCenter` 承载，按钮决策需回传给 tccd 中**仍在等待的那条请求**；发起进程（ZCode pid 8043 / bfs pid 9326）退出后请求失效，窗口失去目标，点击被吞掉。基于「窗口 owner 为 `UserNotificationCenter` + 对应进程全部消失 + 点击零日志」的实测推断，非官方文档上证 |
+| **深层原因（按钮失灵）** | 该提示窗口由系统进程 `UserNotificationCenter` 承载，按钮决策需回传给 tccd 中**仍在等待的那条请求**；发起进程（ZCode pid 8043 / bfs pid 9326）退出后请求失效，窗口失去目标，点击被吞掉。此结论基于「窗口 owner 为 `UserNotificationCenter` + 对应进程全部消失 + 点击零日志」的实测推断，未见官方文档正向确认 |
 | **附加现象** | 提示坐标恰好覆盖在豆包主窗内，视觉上表现为「豆包里的弹窗」，使排障方向容易被引向豆包 |
-| **同类差异** | 与 [2026-10-23 互联网账户僵尸弹窗](records/2026-10-23-macos-internet-accounts-google-reauth-stuck-alert-cannot-become-key-window.md) 机理不同：那例是 `.appex` 内 `_NSAlertPanel` 的 `canBecomeKeyWindow = NO`（进程仍在、窗口拒绝成为 key window）；本例是**请求已随进程消失的孤儿窗口**（进程全无、窗口残留） |
+| **同类差异** | 与 [2026-10-23 互联网账户僵尸弹窗](records/2026-10-23-macos-internet-accounts-google-reauth-stuck-alert-cannot-become-key-window.md) 机理不同：那例是 `.appex` 内 `_NSAlertPanel` 的 `canBecomeKeyWindow = NO`（进程仍在、窗口拒绍成为 key window）；本例是**请求已随进程消失的孤儿窗口**（进程全无、窗口残留） |
 
 ### 误判与反证对照
 
@@ -216,7 +215,7 @@ swift -e 'import Cocoa; let a = CGWindowListCopyWindowInfo([.optionOnScreenOnly,
 # 授权请求来源与结果
 log show --last 10m --predicate 'process == "tccd"' | grep -i zcode
 
-# 清除孤儿提示窗口
+# 清孤儿提示窗口
 killall UserNotificationCenter
 
 # 复启应用
