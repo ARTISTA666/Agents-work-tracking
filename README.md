@@ -17,7 +17,8 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 │   ├── 2026-10-24-*.md
 │   ├── 2026-10-28-*.md
 │   ├── 2026-10-29-*.md
-│   └── 2026-11-21-*.md
+│   ├── 2026-11-21-*.md
+│   └── 2026-11-26-*.md
 └── scripts/                  # 排查过程中编写的辅助脚本
     ├── apibai-retry-proxy.py
     ├── antigravity-silent-check.sh   # Antigravity 出口静默自检（真实调用）
@@ -42,6 +43,12 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 ## 记录列表
 
 按时间倒序排列。
+
+### 2026-11-26
+
+| 文件 | 问题摘要 | 根因 | 状态 |
+| --- | --- | --- | --- |
+| [2026-11-26-antigravity-login-loadcodeassist-eof-and-oauth-timeout.md](records/2026-11-26-antigravity-login-loadcodeassist-eof-and-oauth-timeout.md) | Antigravity 账号初始化报 `loadCodeAssist: EOF`，一次重试等待浏览器回调超时 | HTTP 代理路径一度在 TLS 握手时中断，具体断点未定位。重试的 OAuth 回调在五分钟内未到达。 | ✅ 已解决（重新发起 OAuth，同一 Pro 账号通过 Safari 认证，桌面主界面和原有项目可见） |
 
 ### 2026-11-21
 
@@ -125,7 +132,7 @@ AI 代理工具（Antigravity、ZCode、ChatGPT、Gemini、Qoder 等）在日常
 | **代理分流 / 单域名直连绕过** | [2026-10-22 Qoder 首轮](records/2026-10-22-qoder-network-ssl-reset-direct-bypass.md)：系统绕过列表；[第二轮](records/2026-10-22-qoder-clash-direct-routing.md)：TUN/fake-ip 下绕过列表失效，运行时 config.yaml 置顶 DIRECT（会被重建清空）；[第三轮根治](records/2026-10-22-qoder-flclash-persistent-direct-rules.md)：写入持久库 rules 表 `qoder.sh/.com/.ai → DIRECT`（`scripts/qoder-flclash-persist.sh` / `qoder-flclash-persist-rollback.sh`）；[第四轮裸 IP](records/2026-10-22-qoder-httpdns-resolved-ip-proxy-reset.md)：SDK 的 HTTPDNS 自解析裸 IP 绕过分流，按 IP 段补 `IP_CIDR 8.208.0.0/12 / 47.57.0.0/16 → DIRECT`（`scripts/qoder-httpdns-ip-direct.sh`）；[第五轮 Windows Clash Verge](records/2026-10-29-qoder-windows-clash-verge-diagnostic-timeout-login-center-direct.md)：换机/换客户端规则迁移缺口，规则覆写 prepend 补 `qoder.com/.sh → DIRECT`（`scripts/qoder-win-clash-verge-direct.ps1`）；诊断全绿但登录挂 = 域名分散，用 `Get-DnsClientCache` 抓真实域名（`center.qoder.sh`） |
 | **DNS 污染 / 泄漏** | FlClash 8.8.8.8 污染、ClashX Meta IPv6 DNS 泄漏 |
 | **API 报错 / 参数错** | [2026-10-29 Antigravity 400 INVALID_ARGUMENT（客户端请求构造 + Squirrel 更新滞留）](records/2026-10-29-antigravity-gemini-400-invalid-argument-client-build-and-stuck-squirrel-update.md)（错误串定性优先于换节点）； Antigravity 400 INVALID_ARGUMENT（客户端请求构造）、ZCode 400 Invalid request body、ZCode 401 中断|
-| **Antigravity 专项** | [2026-10-29 Antigravity 400 INVALID_ARGUMENT（客户端请求构造 + Squirrel 更新滞留）](records/2026-10-29-antigravity-gemini-400-invalid-argument-client-build-and-stuck-squirrel-update.md)； [2026-10-22 启动、后端代理、无效更新源、专用进程分流与冷启动验证](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)；历史 Antigravity 400 地域限制记录、FlClash 连通性排查、静默自检/节点探针脚本；[2026-10-29 汉化注入器 LaunchAgent 被 offload 导致静默停摆](records/2026-10-29-antigravity-zh-injector-launchagent-offloaded-silent-stoppage.md) |
+| **Antigravity 专项** | [2026-11-26 登录 EOF 与 OAuth 回调超时](records/2026-11-26-antigravity-login-loadcodeassist-eof-and-oauth-timeout.md)；[2026-10-29 Antigravity 400 INVALID_ARGUMENT（客户端请求构造 + Squirrel 更新滞留）](records/2026-10-29-antigravity-gemini-400-invalid-argument-client-build-and-stuck-squirrel-update.md)； [2026-10-22 启动、后端代理、无效更新源、专用进程分流与冷启动验证](records/2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)；历史 Antigravity 400 地域限制记录、FlClash 连通性排查、静默自检/节点探针脚本；[2026-10-29 汉化注入器 LaunchAgent 被 offload 导致静默停摆](records/2026-10-29-antigravity-zh-injector-launchagent-offloaded-silent-stoppage.md) |
 | **macOS 网络配置** | FlClash DNS 修正与开机自启、ClashX Meta 彻底卸载、Qoder 代理绕过列表（networksetup bypassdomains） |
 | **自动更新失效** | Antigravity Squirrel 退出才安装导致 2.28.0 滞留 10 小时 |
 | **Shell 环境陷阱** | `ELECTRON_RUN_AS_NODE=1` 让 Electron 应用 0 状态秒退且零日志（易误判为升级失败） |
