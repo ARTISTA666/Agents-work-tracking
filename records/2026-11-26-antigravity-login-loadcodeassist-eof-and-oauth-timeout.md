@@ -14,11 +14,12 @@
 
 | 时间（UTC+8） | 负责方 | 关键动作与结论 |
 | --- | --- | --- |
-| 14:33 | Antigravity | 浏览器回调后，账号初始化请求出现 `loadCodeAssist: EOF`。 |
-| 14:35–14:36 | Codex、本机诊断 Agent | 查明语言服务使用 FlClash HTTP 代理。对同一域名分路径测试，HTTP 代理一度在隧道建立后中断，直连和 SOCKS 同批可达。HTTP 代理随后复测可达。 |
+| 14:33 | Antigravity | 浏览器回调与授权码交换完成后，账号初始化请求出现 `loadCodeAssist: EOF`。 |
+| 14:35–14:36 | Codex、本机诊断 Agent | 查明语言服务使用 FlClash HTTP 代理。对同一域名分路径测试，HTTP 代理一度在隧道建立后中断，SOCKS 和绕过显式代理的请求同批可达。HTTP 代理随后复测可达。 |
 | 14:36–14:41 | Codex、用户 | 发起第一轮 OAuth 重试，核实待登录账号的 Google One 页面显示 Google AI Pro 已生效。该轮等待本机回调约五分钟后超时。 |
 | 14:44–14:49 | Codex、用户 | 发起新请求并确认桌面端的本机回调监听。用户完成 Google 确认，Safari 显示认证成功。 |
 | 14:49 左右 | Codex | 在 Safari 允许这一次打开应用，核验桌面端主界面与原有项目。 |
+| 15:00 左右 | Codex、协作 Agent | 深查授权码交换日志、FlClash 连接数据与分流规则，补正探针路径及根因边界。 |
 
 ## 问题详细描述
 
@@ -50,19 +51,27 @@ curl -sS -o /dev/null --connect-timeout 4 --max-time 7 -w 'HTTP %{http_code}\n' 
 curl -sS -o /dev/null --connect-timeout 4 --max-time 7 -w 'HTTP %{http_code}\n' --proxy "socks5h://$proxy" --noproxy '' "$url"
 ```
 
-- **首轮**：HTTP 代理返回 `CONNECT 200`，但后续 TLS 握手中断（curl 35，目标 HTTP 状态 `000`）。直连和 SOCKS 均收到根路径的 `404`。
-- **复测**：该域名经 HTTP 代理、直连和 SOCKS 各测试三次，全部收到根路径 `404`。登录域名经 HTTP 代理另有一次超时。
+- **首轮**：HTTP 代理返回 `CONNECT 200`，随后 TLS 握手中断（curl 35，目标 HTTP 状态 `000`）。SOCKS 与 `--noproxy '*'` 均收到根路径的 `404`。`--noproxy '*'` 只绕过显式代理。续查确认本机开启 TUN 自动路由。
+- **复测**：该域名经 HTTP 代理、绕过显式代理和 SOCKS 各测试三次，全部收到根路径 `404`。登录域名经 HTTP 代理另有一次超时。
 - 根路径 `404` 说明探针成功建立 TLS 并收到 HTTP 响应。账号权限需通过正常登录流程确认。
 
 ### 3. 区分浏览器回调与账号初始化
 
-语言服务日志在 14:33:35 连续记录 `loadCodeAssist: EOF`。第一轮重试从 14:36:39 等待本机回调，于 14:41:39 超时。新一轮请求建立后，`netstat -anv -p tcp` 显示语言服务同时在 IPv4 与 IPv6 回环地址监听新端口。
+语言服务在 14:33:26 收到浏览器回调，约 2.3 秒后完成授权码交换。14:33:35 首次出现 `loadCodeAssist: EOF`，不同日志层连续记录这项错误。原始故障发生在授权码交换之后的账号初始化阶段。第一轮重试从 14:36:39 等待本机回调，于 14:41:39 超时。新一轮请求建立后，`netstat -anv -p tcp` 显示语言服务同时在 IPv4 与 IPv6 回环地址监听新端口。
+
+### 4. 续查 FlClash 入站与实际出口
+
+- FlClash 运行 mihomo v1.19.32，配置启用 TUN 自动路由。目标域名的系统解析落在 FakeIP 地址段，路由指向 TUN。
+- 用本地连接 API 按源端口匹配每次探针。HTTP CONNECT、SOCKS5 与绕过显式代理的请求分别记录为 HTTPS、Socks5 与 Tun。三者均匹配同一条通用 Google 域关键词规则，走同一个出口。同期 Antigravity 语言服务访问同一域名也匹配这一出口。
+- 10 月 22 日记录中的 Antigravity 专用进程分流规则，在本机现行配置中已不存在。当前通用 Google 规则经故障转移组选择的出口与当时固定的出口不同。该配置差异与 14:33 中断的因果关系仍待验证。 [历史修复记录](2026-10-22-antigravity-startup-proxy-update-and-gemini-egress-fix.md)
+- 三种入口对账号初始化域名各探测 8 次，对 OAuth 域名各探测 3 次。33 次探针均收到根路径 `404`，监听期间未出现这两个域名的代理告警。复测期间故障未重现，也没有读取故障时刻的出站连接记录。
+- mihomo 的 HTTP 入口先回复 `CONNECT 200`，再交给出站处理。因此该状态只证明本机代理接受了请求。 [mihomo v1.19.32 实现](https://github.com/MetaCubeX/mihomo/blob/v1.19.32/listener/http/proxy.go#L62-L70) · [TUN 自动路由说明](https://wiki.metacubex.one/en/config/inbound/tun/#auto-route)
 
 ## 根因分析
 
 | 阶段 | 直接原因 | 深层原因与证据边界 |
 | --- | --- | --- |
-| 首次账号初始化 | `loadCodeAssist` 请求在收到完整响应前断开。 | 应用使用的 HTTP 代理路径一度复现 TLS 中断，随后恢复。证据指向这条链路的间歇性连接故障，具体中断点未定位。 |
+| 首次账号初始化 | `loadCodeAssist` 请求在收到完整响应前断开。 | 应用使用的 HTTP 代理路径一度复现 TLS 中断，随后恢复。已知故障阶段是 OAuth 之后的账号初始化。原始 EOF 的 TLS 阶段和断开位置缺少当时的代理连接记录，仍待复现定位。 |
 | 第一轮登录重试 | OAuth 流程在五分钟内未收到浏览器回调，桌面报 `context deadline exceeded`。 | 日志确认等待回调超时。触发这次超时的具体环节未确认。 |
 
 ## 解决方案与落地操作
@@ -78,10 +87,12 @@ curl -sS -o /dev/null --connect-timeout 4 --max-time 7 -w 'HTTP %{http_code}\n' 
 | Google AI Pro | 查看同一账号的 Google One 套餐页 | `Current plan` 为 Google AI Pro | 通过 |
 | 浏览器认证 | 使用新发起的请求完成 Google 登录 | Safari 显示 `Google Antigravity Auth Success` | 通过 |
 | 桌面登录 | 检查 Antigravity 窗口 | 显示 `New Conversation` 和 `Projects`，可见原有项目 | 通过 |
+| 代理路径复测 | 联合 FlClash 连接记录和无凭据 HTTPS 探针 | 三种入口当前走同一出口，探针 33/33 收到响应 | 当时可达 |
+| 具体断点 | 比对故障时应用日志与可用代理资料 | 缺少同一时刻的出站连接记录 | 待复现 |
 
 ## 经验沉淀
 
-- 登录后出现 `loadCodeAssist: EOF` 时，先确认桌面后台使用的代理，再用同一域名做分路径复测。浏览器能打开 Google 只说明浏览器自己的请求可达。
+- 登录后出现 `loadCodeAssist: EOF` 时，先确认桌面后台使用的代理，再用同一域名做分路径复测。浏览器能打开 Google 只说明浏览器自己的请求可达。启用 TUN 时，以代理连接记录确认实际出口。
 - 遇到 `context deadline exceeded`，先从日志确认超时阶段。若卡在 OAuth 回调，重新发起请求并使用最新打开的浏览器标签页。
 - 恢复验收以桌面主界面为准，浏览器的认证成功页是流程中的一个检查点。
 
